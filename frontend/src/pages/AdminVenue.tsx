@@ -1,0 +1,1364 @@
+﻿
+import React, { useState, useEffect, useMemo, useLayoutEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+
+import { AppState, ReadingRoom, Cabin, CabinStatus, ListingStatus, PromotionPlan, PromotionRequest } from '../types';
+import { Card, Button, Input, Badge, Modal, LiveIndicator } from '../components/UI';
+import { Building2, MapPin, Phone, Plus, Grid, Edit2, Save, Image as ImageIcon, CheckCircle, Upload, Layers, ArrowRight, Wallet, Check, AlertCircle, Lock, Sparkles, AlertOctagon, ArrowLeft, Eye, Clock } from 'lucide-react';
+import { venueService } from '../services/venueService';
+import { trustService, VenueTrustStatus } from '../services/trustService';
+import { boostService, BoostPlan, BoostRequest } from '../services/boostService';
+import LocationSelector, { LocationData } from '../components/LocationSelector';
+import { OwnerListingPayment } from '../components/OwnerListingPayment';
+import { WaitlistManager } from '../components/WaitlistManager';
+
+// Debug Error Boundary Component
+class DebugErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+    constructor(props: any) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error: any) {
+        return { hasError: true, error };
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-10 text-red-600 bg-red-50 border border-red-200 rounded-lg m-4 z-50 relative">
+                    <h1 className="text-2xl font-bold mb-4">Component Crash Detected</h1>
+                    <pre className="bg-white p-4 rounded border text-sm overflow-auto max-h-96">
+                        {this.state.error?.toString()}
+                        <br />
+                        {this.state.error?.stack}
+                    </pre>
+                    <button className="mt-4 px-4 py-2 bg-red-100 text-red-800 rounded" onClick={() => window.location.reload()}>Reload Page</button>
+                    <button className="mt-4 ml-4 px-4 py-2 bg-gray-100 text-gray-800 rounded" onClick={() => window.location.href = '/'}>Go Home</button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
+interface AdminVenueProps {
+
+    state: AppState;
+    onCreateRoom: (data: Partial<ReadingRoom>) => Promise<ReadingRoom>;
+    onUpdateRoom: (data: Partial<ReadingRoom>) => void;
+    onAddCabin: (data: Partial<Cabin>) => void;
+    onBulkAddCabins: (data: Partial<Cabin>[]) => void;
+    onUpdateCabin: (id: string, data: Partial<Cabin>) => void;
+    onBulkUpdateCabins: (ids: string[], data: Partial<Cabin>) => void;
+    onBulkDeleteCabins: (ids: string[]) => void;
+}
+
+// Fallback Mock Components if imports fail (Defensive Coding)
+const FallbackComponent = ({ name }: { name: string }) => <div className="p-4 border border-red-300 bg-red-50 text-red-600 rounded">Error loading {name}</div>;
+
+const AMENITY_OPTIONS = ['WiFi', 'AC', 'Power Outlet', 'Ergonomic Chair', 'Locker', 'Lamp', 'Parking', 'Cafeteria', 'Restroom'];
+
+// Helper Functions (Moved outside to be safely accessible)
+const parseAmenities = (val: string | string[] | undefined): string[] => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    try {
+        if (val.trim().startsWith('[')) {
+            return JSON.parse(val);
+        }
+        if (val.includes(',')) {
+            return val.split(',').map(s => s.trim());
+        }
+        return [val];
+    } catch (e) {
+        console.warn("Failed to parse amenities:", e);
+        return [];
+    }
+};
+
+const getVenueImages = (v: ReadingRoom | undefined): string[] => {
+    if (!v || !v.images) return [];
+    try {
+        if (Array.isArray(v.images)) return v.images;
+        return JSON.parse(v.images);
+    } catch (e) {
+        console.warn("Failed to parse venue images:", e);
+        return [];
+    }
+};
+
+const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpdateRoom, onAddCabin, onBulkAddCabins, onUpdateCabin, onBulkUpdateCabins, onBulkDeleteCabins }) => {
+
+    const { venueId } = useParams<{ venueId?: string }>();
+    const navigate = useNavigate();
+
+
+
+    // --- Venue Fetching State ---
+    const [fetchedVenue, setFetchedVenue] = useState<ReadingRoom | undefined>(undefined);
+    const [isLoadingVenue, setIsLoadingVenue] = useState(false);
+
+    // Determines if we are in "Create New" mode
+    const isNewMode = venueId === 'new';
+
+    // console.log("AdminVenue Render: ", { venueId, isNewMode, isLoadingVenue, fetchedVenue });
+
+    // Effect to fetch venue details if editing
+    useEffect(() => {
+        if (venueId && venueId !== 'new') {
+            const loadVenue = async () => {
+                // console.log("Fetching venue details for:", venueId);
+                // Note: We don't set isLoadingVenue=true here to prevent flash, 
+                // OR we accept the spinner. Let's keep spinner.
+                setIsLoadingVenue(true);
+                try {
+                    const data = await venueService.getReadingRoomById(venueId);
+                    // console.log("Venue fetched successfully:", data);
+                    setFetchedVenue(data);
+
+                    // CRITICAL FIX: Initialize form data IMMEDIATELY to prevent race conditions
+                    // and ensure inputs are editable.
+                    setVenueFormData({
+                        ...data,
+                        amenities: parseAmenities(data.amenities as any)
+                    });
+                    setImages(getVenueImages(data));
+
+                    if (data.priceStart) {
+                        setBatchConfig(prev => ({ ...prev, price: data.priceStart! }));
+                        setCabinFormData(prev => ({ ...prev, price: data.priceStart! }));
+                    }
+
+                } catch (error) {
+                    console.error("Failed to fetch venue details:", error);
+                    toast.error("Failed to load venue details");
+                } finally {
+                    setIsLoadingVenue(false);
+                }
+            };
+            loadVenue();
+        } else {
+            setFetchedVenue(undefined);
+        }
+    }, [venueId]);
+
+
+
+    // Use fetched venue if available, otherwise fallback to finding in state (legacy), or undefined if new
+    const venue = useMemo(() => {
+        if (isNewMode) return undefined;
+        // Defensive check for state.readingRooms
+        const rooms = state?.readingRooms || [];
+        return fetchedVenue || rooms.find(r => r.id === venueId);
+    }, [venueId, fetchedVenue, state, isNewMode]);
+
+    // Defensive check for state.cabins
+    const myCabins = useMemo(() => {
+        if (!venue || !state || !state.cabins) return [];
+        return state.cabins.filter(c => c.readingRoomId === venue.id);
+    }, [venue, state]);
+
+    // --- Form State ---
+    const [step, setStep] = useState(1);
+    const [submitting, setSubmitting] = useState(false);
+    const [venueFormData, setVenueFormData] = useState<Partial<ReadingRoom>>({});
+    const [images, setImages] = useState<string[]>([]);
+    const [cabinFormData, setCabinFormData] = useState<Partial<Cabin>>({
+        number: '', floor: 1, price: 0, status: CabinStatus.AVAILABLE, amenities: ['WiFi', 'AC']
+    });
+    const [batchConfig, setBatchConfig] = useState({
+        floor: 1, startNum: 1, endNum: 20, price: 0, amenities: ['WiFi', 'AC'] as string[], prefix: '', zone: 'MIDDLE' as 'FRONT' | 'MIDDLE' | 'BACK'
+    });
+
+
+    // Display data - in new mode use venueFormData
+    // CRITICAL FIX: Always parse amenities to ensure array type, as backend might send string
+    // CRITICAL FIX: Always use venueFormData as the source of truth for the inputs.
+    // Initialization happens in useEffect, so we can trust venueFormData.
+    const rawDisplayData = venueFormData;
+
+    // Safety: Ensure amenities is always an array for display
+    const displayFormData = {
+        ...rawDisplayData,
+        amenities: Array.isArray(rawDisplayData.amenities)
+            ? rawDisplayData.amenities
+            : parseAmenities(rawDisplayData.amenities as any)
+    };
+
+    const displayImages = isNewMode ? images : (images.length > 0 ? images : getVenueImages(venue));
+
+    // --- Tab State ---
+    const [activeTab, setActiveTab] = useState<'details' | 'photos' | 'cabins' | 'waitlist'>('details');
+
+    // Initialize form data when venue is loaded/changed
+    // Remove the redundant sync effect for editing (it's handled in loadVenue)
+    // Only handle initialization for New Mode
+    useEffect(() => {
+        if (isNewMode) {
+            setVenueFormData({});
+            setImages([]);
+            setStep(1);
+        }
+    }, [isNewMode]);
+
+    // Determine current phase
+    const currentStatus = venue?.status || ListingStatus.DRAFT;
+    const isLive = currentStatus === ListingStatus.LIVE;
+    const isPending = currentStatus === ListingStatus.VERIFICATION_PENDING || currentStatus === ListingStatus.PAYMENT_PENDING;
+    const isDraft = !venue || currentStatus === ListingStatus.DRAFT || currentStatus === ListingStatus.REJECTED;
+
+    // Trust & Safety Status
+    const [trustStatus, setTrustStatus] = useState<VenueTrustStatus | null>(null);
+    const [isLoadingTrust, setIsLoadingTrust] = useState(false);
+
+    // Fetch trust status for venue
+    useEffect(() => {
+        if (!venue?.id) return;
+
+        const fetchTrustStatus = async () => {
+            setIsLoadingTrust(true);
+            try {
+                const status = await trustService.getVenueTrustStatus('reading_room', venue.id);
+                setTrustStatus(status);
+            } catch (err) {
+                console.warn('Could not fetch trust status:', err);
+            } finally {
+                setIsLoadingTrust(false);
+            }
+        };
+        fetchTrustStatus();
+    }, [venue?.id]);
+
+    // Trust-based restrictions
+    const isFlagged = trustStatus?.trust_status === 'FLAGGED' || trustStatus?.trust_status === 'UNDER_REVIEW';
+    const isSuspended = trustStatus?.trust_status === 'SUSPENDED';
+    const canPromote = !isFlagged && !isSuspended && (trustStatus?.can_promote ?? true);
+
+    const handleCreateOrUpdateVenue = async (nextStep?: number) => {
+        // Validation for Step 1
+        if (!venueFormData.name || !venueFormData.address || !venueFormData.city || !venueFormData.contactPhone || !venueFormData.priceStart) {
+            alert("Please complete all mandatory details.");
+            return;
+        }
+
+        const dataToSave = {
+            ...venueFormData,
+            images: JSON.stringify(images),
+            imageUrl: images[0] || venueFormData.imageUrl // fallback
+        };
+
+        try {
+            if (!venue) {
+                const newRoom = await onCreateRoom(dataToSave) as ReadingRoom;
+                toast.success('Venue created successfully!');
+                if (newRoom?.id) {
+                    navigate(`/admin/venue/${newRoom.id}`);
+                } else {
+                    setTimeout(() => window.location.reload(), 500);
+                }
+            } else {
+                await onUpdateRoom(dataToSave);
+                toast.success('Changes saved successfully!');
+
+                if (nextStep) {
+                    setStep(nextStep);
+                } else if (isLive) {
+                    setTimeout(() => window.location.reload(), 500);
+                }
+            }
+        } catch (error) {
+            toast.error('Failed to save changes. Please try again.');
+            console.error('Save error:', error);
+        }
+    };
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImages(prev => [...prev, reader.result as string]);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const removeImage = (index: number) => {
+        setImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // --- Payment Mock ---
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+    const handleProceedToPayment = () => {
+        if (venue?.paymentId) {
+            alert("Payment has already been completed for this venue. Your venue is under verification.");
+            return;
+        }
+        if (displayImages.length < 4) {
+            alert("Please upload at least 4 images before proceeding.");
+            return;
+        }
+        setIsPaymentModalOpen(true);
+    };
+
+    const handlePaymentSuccess = () => {
+        setIsPaymentModalOpen(false);
+        setTimeout(() => window.location.reload(), 1000);
+    };
+
+    // --- Cabin Management State ---
+    const [isCabinModalOpen, setIsCabinModalOpen] = useState(false);
+    const [editingCabinId, setEditingCabinId] = useState<string | null>(null);
+    const [selectedCabins, setSelectedCabins] = useState<Set<string>>(new Set());
+
+    // Batch Generator State
+    const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+
+    // --- Boost/Feature State ---
+    const [isBoostModalOpen, setIsBoostModalOpen] = useState(false);
+    const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+    const [isProcessingBoost, setIsProcessingBoost] = useState(false);
+    const [boostSuccess, setBoostSuccess] = useState(false);
+    const [boostError, setBoostError] = useState<string | null>(null);
+
+    const [activePromotionPlans, setActivePromotionPlans] = useState<BoostPlan[]>([]);
+    const [myBoostRequests, setMyBoostRequests] = useState<BoostRequest[]>([]);
+    const [isLoadingPlans, setIsLoadingPlans] = useState(false);
+    const [customAmenity, setCustomAmenity] = useState('');
+
+    useEffect(() => {
+        const loadBoostData = async () => {
+            setIsLoadingPlans(true);
+            try {
+                const [plans, requests] = await Promise.all([
+                    boostService.getPlans(),
+                    boostService.getMyRequests()
+                ]);
+                setActivePromotionPlans(plans.filter(p =>
+                    p.status === 'active' && (p.applicableTo === 'reading_room' || p.applicableTo === 'both')
+                ));
+                setMyBoostRequests(requests);
+            } catch (error) {
+                console.error('Failed to load boost data:', error);
+            } finally {
+                setIsLoadingPlans(false);
+            }
+        };
+        loadBoostData();
+    }, []);
+
+    const selectedPlan = activePromotionPlans.find(p => p.id === selectedPlanId) || activePromotionPlans[0];
+
+    const existingRequest = myBoostRequests.find(
+        r => r.venueId === venue?.id && (r.status === 'paid' || r.status === 'approved' || r.status === 'admin_review')
+    );
+
+    const handleBoostSubmit = async () => {
+        if (!selectedPlan || !venue || !state.currentUser) return;
+
+        setIsProcessingBoost(true);
+        setBoostError(null);
+
+        try {
+            // 0. Load Razorpay first
+            // Dynamic Import to ensure it's available
+            // const { paymentService } = await import('../services/paymentService'); // Import here or assume it's available
+
+            // We need loadRazorpayScript helper here too. 
+            // Reuse logic? Or duplicate small helper.
+            const loadRazorpayScript = () => {
+                return new Promise((resolve) => {
+                    if ((window as any).Razorpay) {
+                        resolve(true);
+                        return;
+                    }
+                    const script = document.createElement('script');
+                    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+                    script.onload = () => resolve(true);
+                    script.onerror = () => resolve(false);
+                    document.body.appendChild(script);
+                });
+            };
+
+            const isLoaded = await loadRazorpayScript();
+            if (!isLoaded) {
+                setBoostError('Razorpay SDK failed to load');
+                setIsProcessingBoost(false);
+                return;
+            }
+
+            // 1. Create Request (INITIATED)
+            const newRequest = await boostService.createRequest(
+                venue.id,
+                'reading_room',
+                selectedPlan.id
+            );
+
+            // 2. Create Razorpay Order
+            const { paymentService } = await import('../services/paymentService');
+            const orderData = await paymentService.createOrder(selectedPlan.price);
+
+            // 3. Open Razorpay
+            const options = {
+                key: orderData.key_id,
+                amount: orderData.amount,
+                currency: orderData.currency,
+                name: "StudySpace - Boost Venue",
+                description: `${selectedPlan.name} for ${venue.name}`,
+                order_id: orderData.id,
+                handler: async function (response: any) {
+                    try {
+                        // 4. Verify & Mark Paid
+                        await boostService.markRequestPaid(newRequest.id, {
+                            payment_id: response.razorpay_payment_id,
+                            order_id: response.razorpay_order_id,
+                            signature: response.razorpay_signature
+                        });
+
+                        setMyBoostRequests(prev => [...prev, { ...newRequest, status: 'paid' }]); // Optimistic update
+                        setBoostSuccess(true);
+                        setTimeout(() => {
+                            setIsBoostModalOpen(false);
+                            setBoostSuccess(false);
+                            // Refresh logic?
+                            window.location.reload();
+                        }, 2000);
+
+                    } catch (verifyError) {
+                        console.error('Boost verification failed:', verifyError);
+                        setBoostError('Payment verification failed. Please contact support.');
+                    }
+                },
+                theme: {
+                    color: '#4F46E5'
+                },
+                modal: {
+                    ondismiss: function () {
+                        setIsProcessingBoost(false);
+                    }
+                }
+            };
+
+            const rzp = new (window as any).Razorpay(options);
+            rzp.on('payment.failed', function (response: any) {
+                setBoostError(`Payment Failed: ${response.error.description}`);
+                setIsProcessingBoost(false);
+            });
+            rzp.open();
+
+        } catch (error) {
+            console.error('Boost request failed:', error);
+            setBoostError('Failed to initiate boost. Please try again.');
+            setIsProcessingBoost(false);
+        }
+    };
+
+    const handleCloseBoostModal = () => {
+        setIsBoostModalOpen(false);
+        setBoostSuccess(false);
+        setBoostError(null);
+    };
+
+    // --- Render Helpers ---
+
+    const renderTabs = () => (
+        <div className="flex border-b border-gray-200 mb-6 bg-white sticky top-0 z-10">
+            <button
+                onClick={() => setActiveTab('details')}
+                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+            >
+                Details
+            </button>
+            <button
+                onClick={() => setActiveTab('photos')}
+                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'photos' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+            >
+                Photos
+            </button>
+            <button
+                onClick={() => setActiveTab('cabins')}
+                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'cabins' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+            >
+                Cabins
+            </button>
+            {isLive && (
+                <button
+                    onClick={() => setActiveTab('waitlist')}
+                    className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'waitlist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                >
+                    <Clock className="w-4 h-4 mr-2" />
+                    Waitlist
+                </button>
+            )}
+        </div>
+    );
+
+    // Status Banner
+    const StatusBanner = () => {
+        // Trust & Safety Banner takes priority
+        if (isSuspended) {
+            return (
+                <div className="p-4 rounded-lg border bg-red-50 text-red-800 border-red-200 mb-6 flex items-start">
+                    <AlertOctagon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <h3 className="font-bold">Trust & Safety Issue - Venue Suspended</h3>
+                        <p className="text-sm">Your venue has been suspended due to Trust & Safety violations. Check Account & Compliance for details.</p>
+                    </div>
+                </div>
+            );
+        }
+
+        if (isFlagged) {
+            return (
+                <div className="p-4 rounded-lg border bg-amber-50 text-amber-800 border-amber-200 mb-6 flex items-start">
+                    <AlertOctagon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <h3 className="font-bold">Action Required - Trust & Safety</h3>
+                        <p className="text-sm">Your venue has been flagged. Promotions and boosts are disabled. Visit Account & Compliance to resolve.</p>
+                    </div>
+                </div>
+            );
+        }
+
+        if (isLive) return null;
+
+        let color = "bg-yellow-50 text-yellow-800 border-yellow-200";
+        let title = "Verification Pending";
+        let msg = "Your venue is currently under review. It will be visible to students once verified.";
+
+        if (currentStatus === ListingStatus.DRAFT) {
+            color = "bg-gray-50 text-gray-800 border-gray-200";
+            title = "Draft Mode";
+            msg = "Complete all steps to submit your venue for verification.";
+        } else if (currentStatus === ListingStatus.REJECTED) {
+            color = "bg-red-50 text-red-800 border-red-200";
+            title = "Submission Rejected";
+            msg = "Please review admin comments and update your listing.";
+        } else if (currentStatus === ListingStatus.SUSPENDED) {
+            color = "bg-red-50 text-red-800 border-red-200";
+            title = "Venue Suspended";
+            msg = "Your venue has been suspended. Please contact support.";
+        }
+
+        return (
+            <div className={`p-4 rounded-lg border ${color} mb-6 flex items-start`}>
+                <AlertCircle className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                <div>
+                    <h3 className="font-bold">{title}</h3>
+                    <p className="text-sm">{msg}</p>
+                </div>
+            </div>
+        );
+    };
+
+    // Step 1: Mandatory Details
+    const renderDetailsForm = (isReadOnly: boolean = false) => {
+        if (isLoadingVenue && !isNewMode) {
+            return (
+                <Card className="p-6">
+                    <div className="flex flex-col items-center justify-center py-10">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-500 mb-4"></div>
+                        <p className="text-gray-500">Loading venue details...</p>
+                    </div>
+                </Card>
+            );
+        }
+
+        return (
+            <Card className="p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    {!isLive && <span className="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">1</span>}
+                    Venue Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 space-y-2">
+                    <Input label="Venue Name *" value={displayFormData.name || ''} onChange={(e: any) => setVenueFormData({ ...venueFormData, name: e.target.value })} disabled={isReadOnly} required />
+                    <Input label="Contact Phone *" value={displayFormData.contactPhone || ''} onChange={(e: any) => setVenueFormData({ ...venueFormData, contactPhone: e.target.value })} disabled={isReadOnly} required />
+
+                    {/* Location Selector - Cascading State > City > Locality */}
+                    <div className="md:col-span-2">
+                        {/* Defensive Wrapper for LocationSelector */}
+                        <LocationSelector
+                            value={{
+                                state: displayFormData.state || '',
+                                city: displayFormData.city || '',
+                                locality: displayFormData.locality,
+                                pincode: displayFormData.pincode,
+                                address: displayFormData.address,
+                                latitude: displayFormData.latitude,
+                                longitude: displayFormData.longitude
+                            }}
+                            onChange={(locationData: LocationData) => {
+                                setVenueFormData({
+                                    ...venueFormData,
+                                    state: locationData.state,
+                                    city: locationData.city,
+                                    locality: locationData.locality || '',
+                                    pincode: locationData.pincode || '',
+                                    address: locationData.address || '',
+                                    latitude: locationData.latitude,
+                                    longitude: locationData.longitude
+                                });
+                            }}
+                            disabled={isReadOnly}
+                            showPincode={true}
+                            showAddress={true}
+                            showCoordinates={false}
+                            required={true}
+                        />
+                    </div>
+
+                    <Input label="Base Price (Starting) *" type="number" value={displayFormData.priceStart || ''} onChange={(e: any) => setVenueFormData({ ...venueFormData, priceStart: Number(e.target.value) })} disabled={isReadOnly} required />
+
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Amenities * (Select at least one)</label>
+                        <div className="flex flex-wrap gap-2">
+                            {AMENITY_OPTIONS.map((opt: string) => (
+                                <label key={opt} className={`flex items-center space-x-2 cursor-pointer p-2 border rounded-md ${isReadOnly ? 'bg-gray-100' : 'hover:bg-gray-50'}`}>
+                                    <input type="checkbox"
+                                        checked={displayFormData.amenities?.includes(opt) || false}
+                                        onChange={() => {
+                                            if (isReadOnly) return;
+                                            const current = venueFormData.amenities || [];
+                                            const next = current.includes(opt) ? current.filter(a => a !== opt) : [...current, opt];
+                                            setVenueFormData({ ...venueFormData, amenities: next });
+                                        }}
+                                        disabled={isReadOnly}
+                                        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                                    />
+                                    <span className="text-sm text-gray-700">{opt}</span>
+                                </label>
+                            ))}
+                            {/* Display custom amenities */}
+                            {displayFormData.amenities?.filter(a => !AMENITY_OPTIONS.includes(a)).map(customAmenity => (
+                                <label key={customAmenity} className={`flex items-center space-x-2 cursor-pointer p-2 border rounded-md bg-indigo-50 ${isReadOnly ? 'bg-gray-100' : 'hover:bg-indigo-100'}`}>
+                                    <input type="checkbox"
+                                        checked={true}
+                                        onChange={() => {
+                                            if (isReadOnly) return;
+                                            const current = venueFormData.amenities || [];
+                                            setVenueFormData({ ...venueFormData, amenities: current.filter(a => a !== customAmenity) });
+                                        }}
+                                        disabled={isReadOnly}
+                                        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                                    />
+                                    <span className="text-sm text-indigo-700 font-medium">{customAmenity}</span>
+                                </label>
+                            ))}
+                        </div>
+                        {/* Add custom amenity input */}
+                        {!isReadOnly && (
+                            <div className="mt-3 flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Add your own amenity"
+                                    value={customAmenity}
+                                    onChange={(e) => setCustomAmenity(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter' && customAmenity.trim()) {
+                                            const current = venueFormData.amenities || [];
+                                            if (!current.includes(customAmenity.trim())) {
+                                                setVenueFormData({ ...venueFormData, amenities: [...current, customAmenity.trim()] });
+                                                setCustomAmenity('');
+                                            }
+                                        }
+                                    }}
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                />
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        if (customAmenity.trim()) {
+                                            const current = venueFormData.amenities || [];
+                                            if (!current.includes(customAmenity.trim())) {
+                                                setVenueFormData({ ...venueFormData, amenities: [...current, customAmenity.trim()] });
+                                                setCustomAmenity('');
+                                            }
+                                        }
+                                    }}
+                                >
+                                    Add
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                {!isReadOnly && (
+                    <div className="mt-6 flex justify-end">
+                        <Button onClick={() => handleCreateOrUpdateVenue(isLive ? undefined : 2)}>
+                            {isLive ? 'Save Changes' : 'Save & Next'}
+                            {!isLive && <ArrowRight className="w-4 h-4 ml-2" />}
+                        </Button>
+                    </div>
+                )}
+            </Card>
+        );
+    };
+
+    // Step 2: Images
+    const renderImagesForm = (isReadOnly: boolean = false) => (
+        <Card className="p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                {!isLive && <span className="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">2</span>}
+                Photos
+            </h3>
+            {!isReadOnly && <p className="text-sm text-gray-500 mb-4">Upload at least 4 high-quality images of your venue.</p>}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                {displayImages.map((img, idx) => (
+                    <div key={idx} className="relative aspect-video rounded-lg overflow-hidden border group">
+                        <img src={img} alt={`Venue ${idx}`} className="w-full h-full object-cover" />
+                        {!isReadOnly && (
+                            <button onClick={() => removeImage(idx)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                <CheckCircle className="w-4 h-4 rotate-45" />
+                            </button>
+                        )}
+                    </div>
+                ))}
+                {!isReadOnly && (
+                    <div className="relative aspect-video rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer">
+                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <span className="text-xs text-gray-500">Upload Photo</span>
+                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
+                    </div>
+                )}
+            </div>
+
+            {!isLive && (
+                <div className="mt-6 flex justify-between">
+                    <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+                    <div className="flex gap-2 items-center">
+                        <span className={`text-sm ${displayImages.length >= 4 ? 'text-green-600' : 'text-red-500'}`}>
+                            {displayImages.length} / 4 uploaded
+                        </span>
+                        <Button onClick={() => handleCreateOrUpdateVenue(3)} disabled={displayImages.length < 4}>
+                            Save & Continue <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                    </div>
+                </div>
+            )}
+            {isLive && !isReadOnly && (
+                <div className="mt-6 flex justify-end">
+                    <Button onClick={() => handleCreateOrUpdateVenue()}>Save Images</Button>
+                </div>
+            )}
+        </Card>
+    );
+
+
+    // Step 3 / Management: Cabins
+    // Re-factored to handle both Wizard and Dashboard mode
+    const renderCabinsManager = (isWizardMode: boolean = false, isLocked: boolean = false) => (
+        <Card className="p-6">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                    {isWizardMode && <span className="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">3</span>}
+                    {isWizardMode ? 'Add Cabins' : 'Cabin Management'}
+                </h3>
+                {!isLocked && (
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={async () => {
+                            // Sync Prices Trigger (Added to Wizard for consistent fix)
+                            // Use venueFormData.priceStart if available (more recent), else venue.priceStart
+                            const priceToSync = venueFormData.priceStart || venue?.priceStart;
+
+                            if (!priceToSync || myCabins.length === 0) {
+                                alert('No cabins to update or base price not set');
+                                return;
+                            }
+                            if (!confirm(`Update all ${myCabins.length} cabins to ₹${priceToSync}?`)) return;
+                            try {
+                                await venueService.updateCabinsPrices(myCabins.map(c => c.id), priceToSync);
+                                alert(`All ${myCabins.length} cabin prices updated to ₹${priceToSync}!`);
+                                // Reload to reflect changes
+                                window.location.reload();
+                            } catch (e) {
+                                alert('Failed to update prices');
+                            }
+                        }}><Layers className="w-4 h-4 mr-2" /> Sync Prices</Button>
+                        <Button size="sm" variant="outline" onClick={() => {
+                            // Initialize batch config with CURRENT form data price
+                            const currentPrice = venueFormData.priceStart || venue?.priceStart || 0;
+                            setBatchConfig(prev => ({ ...prev, price: currentPrice }));
+                            setIsBatchModalOpen(true);
+                        }}><Layers className="w-4 h-4 mr-2" /> Batch</Button>
+                        <Button size="sm" onClick={() => {
+                            setEditingCabinId(null);
+                            // Initialize new cabin form with CURRENT form data price
+                            const currentPrice = venueFormData.priceStart || venue?.priceStart || 0;
+                            setCabinFormData({
+                                number: '',
+                                floor: 1,
+                                price: currentPrice,
+                                status: CabinStatus.AVAILABLE,
+                                amenities: ['WiFi', 'AC']
+                            });
+                            setIsCabinModalOpen(true);
+                        }}><Plus className="w-4 h-4 mr-2" /> Add</Button>
+                    </div>
+                )}
+            </div>
+
+            <div className="border rounded-lg overflow-hidden mb-6 max-h-[300px] overflow-y-auto">
+                {myCabins.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">No cabins added yet. Create some to proceed.</div>
+                ) : (
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Number</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Floor</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Zone</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                                {!isLocked && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {myCabins.map(c => (
+                                <tr key={c.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap">{c.number}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap">{c.floor}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        {c.zone ? (
+                                            <span className={`px-2 py-1 text-xs rounded-full ${c.zone === 'FRONT' ? 'bg-blue-100 text-blue-700' :
+                                                c.zone === 'MIDDLE' ? 'bg-gray-100 text-gray-700' :
+                                                    'bg-amber-100 text-amber-700'
+                                                }`}>{c.zone}</span>
+                                        ) : <span className="text-gray-400 text-xs">Not set</span>}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">₹{c.price}</td>
+                                    {!isLocked && (
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button onClick={() => { setEditingCabinId(c.id); setCabinFormData(c); setIsCabinModalOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
+                                            <button onClick={() => onBulkDeleteCabins([c.id])} className="text-red-600 hover:text-red-900">Delete</button>
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {isWizardMode && (
+                <div className="flex justify-between">
+                    <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
+                    <Button onClick={handleProceedToPayment} className="bg-green-600 hover:bg-green-700 text-white">
+                        Submit & Pay <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                </div>
+            )}
+        </Card>
+    );
+
+    // Grid View for Active Cabins
+    const renderCabinsGrid = () => (
+        <Card className="p-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center">
+                    <Grid className="w-5 h-5 mr-2" />
+                    Cabin Management
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => {
+                        const currentPrice = venueFormData.priceStart || venue?.priceStart || 0;
+                        setBatchConfig(prev => ({ ...prev, price: currentPrice }));
+                        setIsBatchModalOpen(true);
+                    }}><Layers className="w-4 h-4 mr-1 sm:mr-2" /> Batch</Button>
+                    <Button size="sm" variant="outline" onClick={async () => {
+                        const priceToSync = venueFormData.priceStart || venue?.priceStart;
+                        if (!priceToSync || myCabins.length === 0) {
+                            alert('No cabins to update or base price not set');
+                            return;
+                        }
+                        if (!confirm(`Update all ${myCabins.length} cabins to ₹${priceToSync}?`)) return;
+                        try {
+                            await venueService.updateCabinsPrices(myCabins.map(c => c.id), priceToSync);
+                            alert(`All ${myCabins.length} cabin prices updated to ₹${priceToSync}!`);
+                            window.location.reload();
+                        } catch (e) {
+                            alert('Failed to update prices');
+                        }
+                    }}>Sync Prices</Button>
+                    <Button size="sm" onClick={() => {
+                        setEditingCabinId(null);
+                        const currentPrice = venueFormData.priceStart || venue?.priceStart || 0;
+                        setCabinFormData({
+                            number: '',
+                            floor: 1,
+                            price: currentPrice,
+                            status: CabinStatus.AVAILABLE,
+                            amenities: ['WiFi', 'AC']
+                        });
+                        setIsCabinModalOpen(true);
+                    }}><Plus className="w-4 h-4 mr-1 sm:mr-2" /> Add</Button>
+                </div>
+            </div>
+
+            {/* Groups Cabins by Zone */}
+            <div className="space-y-8 mb-6">
+                {myCabins.length === 0 ? (
+                    <div className="col-span-full py-12 text-center text-gray-400 bg-gray-50 rounded-lg border-2 border-dashed">
+                        No cabins configured. Add some or use Batch Create.
+                    </div>
+                ) : (
+                    ['FRONT', 'MIDDLE', 'BACK', undefined].map((zoneGroup) => {
+                        // Filter cabins for this zone
+                        const zoneCabins = myCabins.filter(c =>
+                            (zoneGroup === undefined ? !c.zone : c.zone === zoneGroup)
+                        );
+
+                        if (zoneCabins.length === 0) return null;
+
+                        const zoneTitle = zoneGroup === 'FRONT' ? 'Front Zone' :
+                            zoneGroup === 'MIDDLE' ? 'Middle Zone' :
+                                zoneGroup === 'BACK' ? 'Back Zone' : 'Other Cabins';
+
+                        const zoneSubtitle = zoneGroup === 'FRONT' ? 'Near entrance & AC' :
+                            zoneGroup === 'MIDDLE' ? 'Balanced location' :
+                                zoneGroup === 'BACK' ? 'Quiet corner' : '';
+
+                        const zoneIcon = zoneGroup === 'FRONT' ? <Sparkles className="w-4 h-4 text-blue-500 mr-2" /> :
+                            zoneGroup === 'MIDDLE' ? <MapPin className="w-4 h-4 text-indigo-500 mr-2" /> :
+                                zoneGroup === 'BACK' ? <Lock className="w-4 h-4 text-gray-500 mr-2" /> : null;
+
+                        return (
+                            <div key={zoneGroup || 'other'} className="bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                                <div className="mb-4">
+                                    <h4 className="font-bold text-gray-800 flex items-center">
+                                        {zoneIcon}
+                                        {zoneTitle}
+                                    </h4>
+                                    {zoneSubtitle && <p className="text-xs text-gray-500 ml-6">{zoneSubtitle}</p>}
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+                                    {zoneCabins
+                                        .sort((a, b) => {
+                                            // Robust Alphanumeric Sorting
+                                            return String(a.number).localeCompare(String(b.number), undefined, { numeric: true, sensitivity: 'base' });
+                                        })
+                                        .map(c => {
+                                            const isAvailable = c.status === CabinStatus.AVAILABLE;
+                                            const isOccupied = c.status === CabinStatus.OCCUPIED;
+                                            const isMaintenance = c.status === CabinStatus.MAINTENANCE;
+
+                                            let borderColor = "border-gray-200";
+                                            let bgColor = "bg-white";
+                                            let statusColor = "bg-gray-400";
+
+                                            if (isAvailable) {
+                                                borderColor = "border-green-400";
+                                                statusColor = "bg-green-500";
+                                            } else if (isOccupied) {
+                                                borderColor = "border-red-300";
+                                                bgColor = "bg-red-50";
+                                                statusColor = "bg-red-500";
+                                            } else if (isMaintenance) {
+                                                borderColor = "border-gray-300";
+                                                bgColor = "bg-gray-100";
+                                                statusColor = "bg-gray-400";
+                                            }
+
+                                            return (
+                                                <div key={c.id}
+                                                    className={`relative p-3 rounded-lg border-2 ${borderColor} ${bgColor} hover:shadow-md transition-shadow cursor-pointer group`}
+                                                    onClick={() => { setEditingCabinId(c.id); setCabinFormData(c); setIsCabinModalOpen(true); }}
+                                                >
+                                                    <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${statusColor}`} title={c.status}></div>
+
+                                                    <div className="text-center mt-2">
+                                                        <span className="text-xl font-bold text-gray-800">{c.number}</span>
+                                                        <div className="text-xs text-gray-500 mt-1">₹{c.price}</div>
+                                                    </div>
+
+                                                    <div className="mt-3 flex justify-center gap-1 opacity-60">
+                                                        {parseAmenities(c.amenities as any).includes('WiFi') && <div className="text-xs" title="WiFi">WiFi</div>}
+                                                        {parseAmenities(c.amenities as any).includes('AC') && <div className="text-xs" title="AC">AC</div>}
+                                                    </div>
+
+                                                    <div className="absolute inset-x-0 bottom-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center bg-white/90">
+                                                        <Edit2 className="w-3 h-3 text-indigo-600 mr-2" />
+                                                        <span className="text-[10px] uppercase font-bold text-gray-600">Edit</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+
+            <div className="flex gap-4 text-xs text-gray-500 justify-end">
+                <div className="flex items-center"><span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>Available</div>
+                <div className="flex items-center"><span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Occupied</div>
+                <div className="flex items-center"><span className="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>Maintenance</div>
+            </div>
+        </Card>
+    );
+
+
+    // Shared Modals (Cabin Edit/Add, Batch Create)
+    const renderSharedModals = () => (
+        <>
+            <Modal isOpen={isCabinModalOpen} onClose={() => setIsCabinModalOpen(false)} title={editingCabinId ? "Edit Cabin" : "Add Cabin"}>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input label="Number" value={cabinFormData.number} onChange={(e: any) => setCabinFormData({ ...cabinFormData, number: e.target.value })} />
+                        <Input label="Floor" type="number" value={cabinFormData.floor} onChange={(e: any) => setCabinFormData({ ...cabinFormData, floor: Number(e.target.value) })} />
+                    </div>
+                    <Input label="Price" type="number" value={cabinFormData.price} onChange={(e: any) => setCabinFormData({ ...cabinFormData, price: Number(e.target.value) })} />
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                        <select
+                            value={cabinFormData.status}
+                            onChange={(e) => setCabinFormData({ ...cabinFormData, status: e.target.value as CabinStatus })}
+                            className="w-full p-2 border rounded-md"
+                        >
+                            <option value={CabinStatus.AVAILABLE}>Available</option>
+                            <option value={CabinStatus.OCCUPIED}>Occupied</option>
+                            <option value={CabinStatus.MAINTENANCE}>Maintenance</option>
+                            <option value={CabinStatus.RESERVED}>Reserved</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Zone</label>
+                            <select
+                                value={cabinFormData.zone || ''}
+                                onChange={(e) => setCabinFormData({ ...cabinFormData, zone: e.target.value as any || undefined })}
+                                className="w-full p-2 border rounded-md"
+                            >
+                                <option value="">Select Zone...</option>
+                                <option value="FRONT">Front Zone (Near AC/Window)</option>
+                                <option value="MIDDLE">Middle Zone</option>
+                                <option value="BACK">Back Zone (Quiet Corner)</option>
+                            </select>
+                        </div>
+                        <Input
+                            label="Row Label (e.g., A, B, C)"
+                            value={cabinFormData.rowLabel || ''}
+                            onChange={(e: any) => setCabinFormData({ ...cabinFormData, rowLabel: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="flex justify-between mt-4">
+                        {editingCabinId && (
+                            <Button variant="danger" onClick={() => { onBulkDeleteCabins([editingCabinId]); setIsCabinModalOpen(false); }}>Delete</Button>
+                        )}
+                        <Button onClick={async () => {
+                            if (editingCabinId) {
+                                await onUpdateCabin(editingCabinId, cabinFormData);
+                            } else if (venue) {
+                                await onAddCabin({ ...cabinFormData, readingRoomId: venue.id });
+                            }
+                            setIsCabinModalOpen(false);
+                        }}>Save Changes</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} title="Batch Create">
+                <div className="space-y-4">
+                    <Input label="Start" type="number" value={batchConfig.startNum} onChange={(e: any) => setBatchConfig({ ...batchConfig, startNum: Number(e.target.value) })} />
+                    <Input label="End" type="number" value={batchConfig.endNum} onChange={(e: any) => setBatchConfig({ ...batchConfig, endNum: Number(e.target.value) })} />
+                    <Input label="Floor" type="number" value={batchConfig.floor} onChange={(e: any) => setBatchConfig({ ...batchConfig, floor: Number(e.target.value) })} />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Zone for All Cabins</label>
+                        <select
+                            value={batchConfig.zone}
+                            onChange={(e) => setBatchConfig({ ...batchConfig, zone: e.target.value as any })}
+                            className="w-full p-2 border rounded-md"
+                        >
+                            <option value="FRONT">Front Zone (Near AC/Window)</option>
+                            <option value="MIDDLE">Middle Zone</option>
+                            <option value="BACK">Back Zone (Quiet Corner)</option>
+                        </select>
+                    </div>
+                    <Button onClick={() => {
+                        const newCabins = [];
+                        for (let i = batchConfig.startNum; i <= batchConfig.endNum; i++) {
+                            newCabins.push({
+                                number: `${batchConfig.prefix}${i}`,
+                                floor: batchConfig.floor,
+                                price: batchConfig.price,
+                                status: CabinStatus.AVAILABLE,
+                                amenities: batchConfig.amenities,
+                                zone: batchConfig.zone
+                            });
+                        }
+                        if (venue) {
+                            onBulkAddCabins(newCabins.map(c => ({ ...c, readingRoomId: venue.id })));
+                        }
+                        setIsBatchModalOpen(false);
+                    }}>Generate {batchConfig.endNum - batchConfig.startNum + 1} Cabins</Button>
+                </div>
+            </Modal>
+        </>
+    );
+
+    // --- Safe Logic Enforcement (Moved to end to prevent Hook Violations) ---
+    if (isLoadingVenue) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-500">Loading venue details...</p>
+            </div>
+        );
+    }
+
+    if (!state) {
+        return <div className="p-8 text-center text-red-600">Application state is missing. Please reload.</div>;
+    }
+
+    // Live Dashboard View (Re-using some original logic but simplified for now)
+    if (isLive) {
+        // Return original dashboard
+        return (
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                <div className="flex justify-between items-center mb-6">
+                    <LiveIndicator />
+                    <Badge variant="success">LIVE</Badge>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2">
+                        {/* Summary Card */}
+                        <Card className="p-6 mb-6">
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h2 className="text-xl font-bold">{venue?.name}</h2>
+                                    <p className="text-gray-600">{venue?.address}, {venue?.locality}, {venue?.city}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-indigo-50 p-4 rounded-lg text-center">
+                                    <span className="block text-2xl font-bold text-indigo-700">{myCabins.length}</span>
+                                    <span className="text-xs text-indigo-600">Total Cabins</span>
+                                </div>
+                                <div className="bg-green-50 p-4 rounded-lg text-center">
+                                    <span className="block text-2xl font-bold text-green-700">{myCabins.filter(c => c.status === 'AVAILABLE').length}</span>
+                                    <span className="text-xs text-green-600">Available</span>
+                                </div>
+                            </div>
+                        </Card>
+
+                        {/* Tabbed Interface for Live View */}
+                        {renderTabs()}
+
+                        <div className="mt-4">
+                            <div className={activeTab === 'details' ? 'block' : 'hidden'}>
+                                {renderDetailsForm(false)}
+                            </div>
+                            <div className={activeTab === 'photos' ? 'block' : 'hidden'}>
+                                {renderImagesForm(false)}
+                            </div>
+                            <div className={activeTab === 'cabins' ? 'block' : 'hidden'}>
+                                {renderCabinsGrid()}
+                            </div>
+                            <div className={activeTab === 'waitlist' ? 'block' : 'hidden'}>
+                                {venue && <WaitlistManager readingRoomId={venue.id} state={state} />}
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div>
+                        <Card className="p-4 bg-gradient-to-br from-indigo-50 to-white border-indigo-100 transition-all hover:shadow-lg">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="bg-yellow-100 text-yellow-700 p-2.5 rounded-xl shadow-inner">
+                                    <Sparkles className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900 leading-tight">Boost Visibility</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">Get up to 5x more views</p>
+                                </div>
+                            </div>
+
+                            {/* CORE BUSINESS RULE: Check for APPROVED PromotionRequest, not hardcoded isFeatured */}
+                            {(() => {
+                                const approvedPromotion = (state.promotionRequests || []).find(
+                                    pr => pr.listingId === venue?.id && pr.status === 'approved' && (!pr.expiryDate || new Date(pr.expiryDate) > new Date())
+                                );
+
+                                if (approvedPromotion) {
+                                    return (
+                                        <div className="bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-green-200 mb-2 shadow-sm">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-bold text-green-700 uppercase tracking-wider flex items-center gap-1">
+                                                    <CheckCircle className="w-3 h-3" /> Active Promotion
+                                                </span>
+                                                <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{approvedPromotion.promotionPlanName}</span>
+                                            </div>
+                                            <div className="flex justify-between items-end">
+                                                <p className="text-xs text-gray-500">Expires on</p>
+                                                <p className="text-sm font-semibold text-gray-900">{approvedPromotion.expiryDate ? new Date(approvedPromotion.expiryDate).toLocaleDateString() : 'N/A'}</p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <Button
+                                        className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white shadow-lg shadow-indigo-200/50 border-none py-6"
+                                        onClick={() => setIsBoostModalOpen(true)}
+                                    >
+                                        Promote Now <ArrowRight className="ml-2 w-4 h-4" />
+                                    </Button>
+                                );
+                            })()}
+                        </Card>
+
+                        <Card className="p-4 mt-6">
+                            <h3 className="font-bold mb-4">Venue Actions</h3>
+                            <p className="text-sm text-gray-500 mb-4">Manage availability and settings.</p>
+                            {/* Future actions */}
+                            <Button
+                                className="w-full mb-2"
+                                variant="outline"
+                                onClick={() => venue?.id && window.open(`/#/admin/preview/venue/${venue.id}`, '_blank')}
+                                disabled={!venue?.id}
+                            >
+                                <Eye className="w-4 h-4 mr-2" />
+                                View Public Page
+                            </Button>
+                        </Card>
+                    </div>
+                </div>
+
+                {/* Boost Modal */}
+                <Modal isOpen={isBoostModalOpen} onClose={handleCloseBoostModal} title={boostSuccess ? "Request Submitted!" : "Boost Venue Visibility"}>
+                    {boostSuccess ? (
+                        <div className="text-center py-6">
+                            <div className="bg-yellow-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <CheckCircle className="w-10 h-10 text-yellow-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Payment Successful!</h3>
+                            <p className="text-gray-600 mb-2">
+                                Your boost request for {selectedPlan?.durationDays} days has been submitted.
+                            </p>
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
+                                <p className="text-amber-800 text-sm font-medium">Pending Admin Approval</p>
+                                <p className="text-amber-700 text-xs mt-1">Your venue will be featured once approved by our team.</p>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-4">This modal will close automatically...</p>
+                        </div>
+                    ) : activePromotionPlans.length === 0 ? (
+                        <div className="text-center py-8">
+                            <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                            <h3 className="text-lg font-bold text-gray-700 mb-2">No Promotion Plans Available</h3>
+                            <p className="text-gray-500">Promotion plans are not configured yet. Please check back later.</p>
+                        </div>
+                    ) : existingRequest ? (
+                        <div className="text-center py-8">
+                            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${existingRequest.status === 'approved' ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                                <CheckCircle className={`w-8 h-8 ${existingRequest.status === 'approved' ? 'text-green-600' : 'text-yellow-600'}`} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">
+                                {existingRequest.status === 'approved' ? 'Promotion Active!' : 'Request Pending Approval'}
+                            </h3>
+                            <p className="text-gray-600">
+                                {existingRequest.status === 'approved'
+                                    ? `Your venue is featured until ${existingRequest.expiryDate ? new Date(existingRequest.expiryDate).toLocaleDateString() : 'N/A'}`
+                                    : 'Your promotion request is awaiting Super Admin approval.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="bg-yellow-50 p-4 rounded-lg flex gap-3 text-yellow-800 text-sm">
+                                <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                <p>Get listed in the "Featured Reading Rooms" section on the student home screen and increase your views by up to 5x!</p>
+                            </div>
+
+                            {boostError && (
+                                <div className="bg-red-50 p-4 rounded-lg flex gap-3 text-red-800 text-sm border border-red-200">
+                                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                                    <p>{boostError}</p>
+                                </div>
+                            )}
+
+                            <div className="space-y-3">
+                                <label className="block text-sm font-medium text-gray-700">Select Plan</label>
+                                {activePromotionPlans.map((plan) => (
+                                    <div
+                                        key={plan.id}
+                                        onClick={() => !isProcessingBoost && setSelectedPlanId(plan.id)}
+                                        className={`flex justify-between items-center p-4 border rounded-xl cursor-pointer transition-all ${selectedPlanId === plan.id || (!selectedPlanId && plan === activePromotionPlans[0])
+                                            ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600'
+                                            : 'border-gray-200 hover:border-gray-300 bg-white'} ${isProcessingBoost ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                        <div>
+                                            <h4 className="font-bold text-gray-900">{plan.name}</h4>
+                                            <p className="text-xs text-gray-500">{plan.description || `${plan.durationDays} days of featured listing`}</p>
+                                        </div>
+                                        <span className="text-lg font-bold text-indigo-700">₹{plan.price}<span className="text-xs text-gray-500"> + GST</span></span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <Button
+                                className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white shadow-lg border-none py-6 text-lg"
+                                onClick={handleBoostSubmit}
+                                isLoading={isProcessingBoost}
+                                disabled={isProcessingBoost || !selectedPlan}
+                            >
+                                {isProcessingBoost ? 'Processing Payment...' : `Pay ₹${selectedPlan?.price || 0} + GST & Submit Request`}
+                            </Button>
+                            <p className="text-xs text-center text-gray-400 mt-2">Secure payment via Razorpay - Requires admin approval</p>
+                        </div>
+                    )}
+                </Modal>
+
+                {renderSharedModals()}
+            </div>
+        );
+    }
+
+    // Default: Onboarding Wizard
+    return (
+        <div className="max-w-3xl mx-auto p-6 pb-24">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Venue Onboarding</h1>
+            <p className="text-gray-500 mb-8">Complete these steps to list your reading room.</p>
+
+            <div className="flex items-center mb-8 relative">
+                <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-gray-200 -z-10"></div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} mr-auto ml-0 transition-colors`}>1</div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} mx-auto transition-colors`}>2</div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 3 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} ml-auto mr-0 transition-colors`}>3</div>
+            </div>
+
+            {step === 1 && renderDetailsForm(false)}
+            {step === 2 && renderImagesForm(false)}
+
+            {step === 3 && renderCabinsManager(true, false)}
+
+            {/* Payment Modal - Uses New OwnerListingPayment Component with Razorpay Integration */}
+            {/* Defensive check for state.subscriptionPlans */}
+            <OwnerListingPayment
+                isOpen={isPaymentModalOpen}
+                onClose={() => setIsPaymentModalOpen(false)}
+                venueId={venue?.id || ''}
+                venueName={venue?.name || 'Your Venue'}
+                venueType="reading_room"
+                subscriptionPlans={(state.subscriptionPlans || []).filter(p => p.isActive)}
+                onSuccess={handlePaymentSuccess}
+            />
+
+            {renderSharedModals()}
+        </div>
+    );
+};
+
+export const AdminVenue: React.FC<AdminVenueProps> = (props) => (
+    <DebugErrorBoundary>
+        <AdminVenueBase {...props} />
+    </DebugErrorBoundary>
+);

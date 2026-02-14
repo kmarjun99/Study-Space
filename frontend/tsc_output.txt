@@ -1,0 +1,40 @@
+src/App.tsx(156,23): error TS2345: Argument of type '(prev: AppState) => { subscriptionPlans: SubscriptionPlan[]; favorites: Favorite[]; currentUser: User; users: User[]; readingRooms: ReadingRoom[]; ... 11 more ...; conversations: Conversation[]; }' is not assignable to parameter of type 'SetStateAction<AppState>'.
+  Type '(prev: AppState) => { subscriptionPlans: SubscriptionPlan[]; favorites: Favorite[]; currentUser: User; users: User[]; readingRooms: ReadingRoom[]; ... 11 more ...; conversations: Conversation[]; }' is not assignable to type '(prevState: AppState) => AppState'.
+    Call signature return types '{ subscriptionPlans: SubscriptionPlan[]; favorites: Favorite[]; currentUser: User; users: User[]; readingRooms: ReadingRoom[]; cabins: Cabin[]; ... 10 more ...; conversations: Conversation[]; }' and 'AppState' are incompatible.
+      The types of 'subscriptionPlans' are incompatible between these types.
+        Type 'import("C:/Users/archi/Downloads/SSPACE-main (5)/SSPACE-main/frontend/src/services/subscriptionService").SubscriptionPlan[]' is not assignable to type 'import("C:/Users/archi/Downloads/SSPACE-main (5)/SSPACE-main/frontend/src/types").SubscriptionPlan[]'.
+          Type 'SubscriptionPlan' is missing the following properties from type 'SubscriptionPlan': billingCycle, allowedListingTypes
+src/pages/AdminFinancials.tsx(123,22): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(131,31): error TS2339: Property 'startDate' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(132,19): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(137,22): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(152,41): error TS2339: Property 'startDate' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(153,25): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(444,74): error TS2339: Property 'startDate' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(447,46): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(447,87): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminFinancials.tsx(448,34): error TS2339: Property 'paymentStatus' does not exist on type 'PaymentTransaction'.
+src/pages/AdminListings.tsx(89,28): error TS2322: Type '"warning" | "danger"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+  Type '"danger"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/OwnerCompliance.tsx(99,31): error TS2322: Type '"danger"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/OwnerCompliance.tsx(101,31): error TS2322: Type '"secondary"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/OwnerCompliance.tsx(204,32): error TS2322: Type '"secondary"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/OwnerCompliance.tsx(206,32): error TS2322: Type '"danger"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/OwnerCompliance.tsx(208,32): error TS2322: Type '"danger"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/OwnerCompliance.tsx(281,48): error TS2322: Type '"danger"' is not assignable to type '"error" | "success" | "info" | "warning"'.
+src/pages/SuperAdminDashboard.tsx(83,63): error TS2304: Cannot find name 'DollarSign'.
+src/pages/SuperAdminDashboard.tsx(114,54): error TS2741: Property 'tickets' is missing in type '{}' but required in type 'SuperAdminSupportManagerProps'.
+src/pages/SuperAdminDashboard.tsx(149,63): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'className' does not exist in type 'Partial<unknown> & Attributes'.
+src/pages/SuperAdminFinanceView.tsx(7,10): error TS2305: Module '"../types"' has no exported member 'RefundAdmin'.
+src/pages/SuperAdminSettings.tsx(95,148): error TS2322: Type '{ label: string; value: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void; icon: Element; }' is not assignable to type 'IntrinsicAttributes & InputProps'.
+  Property 'icon' does not exist on type 'IntrinsicAttributes & InputProps'.
+src/pages/SuperAdminSettings.tsx(96,148): error TS2322: Type '{ label: string; value: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void; icon: Element; }' is not assignable to type 'IntrinsicAttributes & InputProps'.
+  Property 'icon' does not exist on type 'IntrinsicAttributes & InputProps'.
+src/services/aiService.ts(54,11): error TS2353: Object literal may only specify known properties, and 'googleSearch' does not exist in type 'ToolConfig'.
+src/services/aiService.ts(70,7): error TS2322: Type 'import("C:/Users/archi/Downloads/SSPACE-main (5)/SSPACE-main/frontend/node_modules/@google/genai/dist/genai").GroundingChunk[]' is not assignable to type 'import("C:/Users/archi/Downloads/SSPACE-main (5)/SSPACE-main/frontend/src/services/aiService").GroundingChunk[]'.
+  Type 'import("C:/Users/archi/Downloads/SSPACE-main (5)/SSPACE-main/frontend/node_modules/@google/genai/dist/genai").GroundingChunk' is not assignable to type 'import("C:/Users/archi/Downloads/SSPACE-main (5)/SSPACE-main/frontend/src/services/aiService").GroundingChunk'.
+    Types of property 'web' are incompatible.
+      Type 'GroundingChunkWeb' is not assignable to type '{ uri: string; title: string; }'.
+        Property 'uri' is optional in type 'GroundingChunkWeb' but required in type '{ uri: string; title: string; }'.
