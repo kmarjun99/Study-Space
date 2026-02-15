@@ -119,6 +119,38 @@ app.include_router(cache.router)  # Cache Management (Super Admin)
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Auto-create admin user if it doesn't exist
+    from app.database import AsyncSessionLocal
+    from app.models.user import User, UserRole, VerificationStatus
+    from app.core.security import get_password_hash
+    from sqlalchemy.future import select
+    
+    async with AsyncSessionLocal() as db:
+        try:
+            # Check if admin user exists
+            result = await db.execute(
+                select(User).where(User.email == "admin@studyspace.com")
+            )
+            admin_user = result.scalars().first()
+            
+            if not admin_user:
+                # Create admin user
+                new_admin = User(
+                    email="superadmin@studyspace.com",
+                    hashed_password=get_password_hash("superadmin123"),
+                    name="Super Admin",
+                    role=UserRole.SUPER_ADMIN,
+                    phone="9876543210",
+                    verification_status=VerificationStatus.VERIFIED
+                )
+                db.add(new_admin)
+                await db.commit()
+                print("✅ Admin user created: admin@studyspace.com (Password: admin123)")
+            else:
+                print("ℹ️  Admin user already exists")
+        except Exception as e:
+            print(f"⚠️  Could not create admin user: {e}")
 
 from app.core.socket_manager import manager
 

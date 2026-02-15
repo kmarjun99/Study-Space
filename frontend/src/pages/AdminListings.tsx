@@ -265,7 +265,7 @@ export const AdminListings: React.FC = () => {
                             <Building2 className="w-5 h-5 text-indigo-600" />
                             Reading Rooms ({readingRooms.length})
                         </h2>
-                        <Button size="sm" variant="ghost" onClick={() => navigate('/admin/venue/new')}>
+                        <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={() => navigate('/admin/venue/new')}>
                             <Plus className="w-4 h-4 mr-1" /> Add New
                         </Button>
                     </div>
@@ -295,7 +295,7 @@ export const AdminListings: React.FC = () => {
                             <Home className="w-5 h-5 text-purple-600" />
                             PG / Hostels ({accommodations.length})
                         </h2>
-                        <Button size="sm" variant="ghost" onClick={() => navigate('/admin/accommodation/new')}>
+                        <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={() => navigate('/admin/accommodation/new')}>
                             <Plus className="w-4 h-4 mr-1" /> Add New
                         </Button>
                     </div>
