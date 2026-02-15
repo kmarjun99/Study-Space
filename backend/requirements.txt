@@ -16,3 +16,4 @@ typing-extensions>=4.0.0
 fastapi-mail==1.4.1
 reportlab==4.0.7
 razorpay==1.4.1
+redis==5.0.1
