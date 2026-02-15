@@ -201,12 +201,14 @@ export const AdminListings: React.FC = () => {
                     <Button
                         variant="outline"
                         onClick={() => navigate('/admin/venue/new')}
+                        className="border-purple-300 text-purple-700 hover:bg-purple-50"
                     >
                         <Plus className="w-4 h-4 mr-2" />
                         Add Reading Room
                     </Button>
                     <Button
                         onClick={() => navigate('/admin/accommodation/new')}
+                        className="bg-purple-600 hover:bg-purple-700"
                     >
                         <Plus className="w-4 h-4 mr-2" />
                         Add PG / Hostel

@@ -217,13 +217,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ state }) => {
                     Create a Reading Room or List a PG to get started.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
-                    <Link to="/admin/venue">
-                        <Button size="lg" className="w-full sm:w-auto">
+                    <Link to="/admin/venue/new">
+                        <Button size="lg" className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700">
                             <Plus className="h-5 w-5 mr-2" /> Create Reading Room
                         </Button>
                     </Link>
-                    <Link to="/admin/accommodation">
-                        <Button size="lg" variant="secondary" className="w-full sm:w-auto">
+                    <Link to="/admin/accommodation/new">
+                        <Button size="lg" className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700">
                             <Plus className="h-5 w-5 mr-2" /> List Accommodation
                         </Button>
                     </Link>
