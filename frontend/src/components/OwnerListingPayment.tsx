@@ -106,22 +106,14 @@ export const OwnerListingPayment: React.FC<OwnerListingPaymentProps> = ({
         await new Promise(resolve => setTimeout(resolve, 1500));
         
         try {
-          // Auto-verify with demo payment data
-          await paymentService.verifyPayment({
-            razorpay_order_id: orderData.id,
-            razorpay_payment_id: `pay_demo_${Date.now()}`,
-            razorpay_signature: `sig_demo_${Date.now()}`
-          });
-
-          // Submit venue activation
+          // Use dev-bypass endpoint for demo mode
           await axios.post(
-            `${API_BASE_URL}/payments/venue/confirm-subscription`,
+            `${API_BASE_URL}/payments/venue/dev-bypass`,
             {
               venue_id: venueId,
               venue_type: venueType,
               subscription_plan_id: selectedPlanId,
-              payment_id: `pay_demo_${Date.now()}`,
-              order_id: orderData.id
+              amount: amount
             },
             { headers: { 'Authorization': `Bearer ${getAuthToken()}` } }
           );
