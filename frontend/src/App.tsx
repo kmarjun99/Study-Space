@@ -32,6 +32,7 @@ import { SuperAdminAccommodationReview } from './pages/SuperAdminAccommodationRe
 import { SuperAdminReadingRoomReview } from './pages/SuperAdminReadingRoomReview';
 import { SupportPage } from './pages/Support';
 import { MessagesPage } from './pages/MessagesPage';
+import { MockPaymentGateway } from './pages/MockPaymentGateway';
 import { AppState, UserRole, User, Booking, CabinStatus, ReadingRoom, Cabin, Notification, Review, WaitlistEntry, Accommodation, SupportTicket, PlatformSettings, PromotionPlan, PromotionRequest, Message, Conversation } from './types';
 import { MOCK_USERS, MOCK_BOOKINGS, generateCabins, MOCK_NOTIFICATIONS, MOCK_READING_ROOMS, MOCK_REVIEWS, MOCK_ACCOMMODATIONS, MOCK_TICKETS, MOCK_PLANS, MOCK_PROMOTION_PLANS, MOCK_PROMOTION_REQUESTS } from './services/mockData';
 import { realTimeService } from './services/realTimeService';
@@ -908,6 +909,9 @@ const App: React.FC = () => {
           unreadMessageCount={unreadMessageCount}
         >
           <Routes>
+            {/* Mock Payment Gateway - Available to all users in demo mode */}
+            <Route path="/mock-payment" element={<MockPaymentGateway />} />
+            
             <Route path="/" element={
               appState.currentUser.role === UserRole.ADMIN
                 ? <Navigate to="/admin" />

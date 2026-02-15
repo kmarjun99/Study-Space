@@ -229,6 +229,51 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
         fetchTrustStatus();
     }, [venue?.id]);
 
+    // Handle payment callback from mock payment gateway
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentId = urlParams.get('razorpay_payment_id');
+        const orderId = urlParams.get('razorpay_order_id');
+        const signature = urlParams.get('razorpay_signature');
+        
+        if (paymentId && orderId && signature) {
+            // Retrieve callback info from sessionStorage
+            const callbackDataStr = sessionStorage.getItem('boost_payment_callback');
+            if (callbackDataStr) {
+                const callbackData = JSON.parse(callbackDataStr);
+                
+                // Clear the stored data
+                sessionStorage.removeItem('boost_payment_callback');
+                
+                // Process the payment
+                const processPayment = async () => {
+                    try {
+                        await boostService.markRequestPaid(callbackData.request_id, {
+                            payment_id: paymentId,
+                            order_id: orderId,
+                            signature: signature
+                        });
+                        
+                        toast.success(`✅ Boost payment completed successfully!`);
+                        
+                        // Clean URL
+                        window.history.replaceState({}, '', window.location.pathname);
+                        
+                        // Reload to reflect changes
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    } catch (error) {
+                        console.error('Payment verification failed:', error);
+                        toast.error('Payment verification failed. Please contact support.');
+                    }
+                };
+                
+                processPayment();
+            }
+        }
+    }, []);
+
     // Trust-based restrictions
     const isFlagged = trustStatus?.trust_status === 'FLAGGED' || trustStatus?.trust_status === 'UNDER_REVIEW';
     const isSuspended = trustStatus?.trust_status === 'SUSPENDED';
@@ -392,32 +437,27 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
             const { paymentService } = await import('../services/paymentService');
             const orderData = await paymentService.createOrder(selectedPlan.price);
 
-            // 🎭 DEMO MODE: Auto-complete payment without Razorpay
+            // 🎭 DEMO MODE: Redirect to mock payment gateway
             if (orderData.is_demo || orderData.key_id === 'demo_key_id') {
-                toast.success('💳 DEMO MODE: Payment simulated successfully!', { duration: 3000 });
+                // Store callback info in sessionStorage
+                sessionStorage.setItem('boost_payment_callback', JSON.stringify({
+                    request_id: newRequest.id,
+                    venue_id: venue.id,
+                    venue_name: venue.name,
+                    plan_name: selectedPlan.name
+                }));
                 
-                try {
-                    // Auto-verify with demo payment data
-                    await boostService.markRequestPaid(newRequest.id, {
-                        payment_id: `pay_demo_${Date.now()}`,
-                        order_id: orderData.id,
-                        signature: `sig_demo_${Date.now()}`
-                    });
-
-                    setMyBoostRequests(prev => [...prev, { ...newRequest, status: 'paid' }]);
-                    setBoostSuccess(true);
-                    setTimeout(() => {
-                        setIsBoostModalOpen(false);
-                        setBoostSuccess(false);
-                        window.location.reload();
-                    }, 2000);
-                    return;
-                } catch (error) {
-                    console.error('Demo payment verification failed:', error);
-                    setBoostError('Demo payment failed. Please try again.');
-                    setIsProcessingBoost(false);
-                    return;
-                }
+                // Redirect to mock payment gateway
+                const paymentUrl = `/mock-payment?` + new URLSearchParams({
+                    amount: orderData.amount.toString(),
+                    order_id: orderData.id,
+                    description: `${selectedPlan.name} for ${venue.name}`,
+                    merchant: 'StudySpace - Boost Venue',
+                    callback: window.location.pathname + window.location.search
+                }).toString();
+                
+                window.location.href = `#${paymentUrl}`;
+                return;
             }
 
             // 3. Load Razorpay SDK for real payments
