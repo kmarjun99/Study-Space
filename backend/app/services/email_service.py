@@ -1,25 +1,36 @@
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Content
 from pydantic import EmailStr
 from typing import List, Optional
 import os
 from pathlib import Path
 from app.core.config import settings
 
-# Email configuration
-conf = ConnectionConfig(
-    MAIL_USERNAME=settings.mail_username or os.getenv("mail_username", ""),
-    MAIL_PASSWORD=settings.mail_password or os.getenv("mail_password", ""),
-    MAIL_FROM=settings.mail_from or os.getenv("mail_from", "noreply@studyspace.com"),
-    MAIL_PORT=settings.mail_port or int(os.getenv("mail_port", "465")),
-    MAIL_SERVER=settings.mail_server or os.getenv("mail_server", "smtp.gmail.com"),
-    MAIL_STARTTLS=False,
-    MAIL_SSL_TLS=True,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True,
-    TEMPLATE_FOLDER=Path(__file__).parent.parent / 'templates' / 'email'
-)
+# SendGrid configuration
+SENDGRID_API_KEY = settings.sendgrid_api_key or os.getenv("SENDGRID_API_KEY", "")
+MAIL_FROM = settings.mail_from or os.getenv("mail_from", "noreply@studyspace.com")
 
-fm = FastMail(conf)
+sg = SendGridAPIClient(SENDGRID_API_KEY) if SENDGRID_API_KEY else None
+
+
+async def _send_email(to_email: str, subject: str, html_content: str):
+    """Internal helper to send email via SendGrid"""
+    if not sg:
+        print("SendGrid API key not configured")
+        return False
+    
+    try:
+        message = Mail(
+            from_email=MAIL_FROM,
+            to_emails=to_email,
+            subject=subject,
+            html_content=html_content
+        )
+        response = sg.send(message)
+        return response.status_code in [200, 201, 202]
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
 
 
 async def send_booking_confirmation_email(
@@ -44,18 +55,20 @@ async def send_booking_confirmation_email(
             - cabin_number: Cabin/room number (optional)
     """
     try:
-        message = MessageSchema(
-            subject="Booking Confirmation - StudySpace",
-            recipients=[recipient_email],
-            template_body={
-                "recipient_name": recipient_name,
-                **booking_details
-            },
-            subtype=MessageType.html
-        )
-        
-        await fm.send_message(message, template_name="booking_confirmation.html")
-        return True
+        html_content = f"""
+        <h2>Booking Confirmed!</h2>
+        <p>Dear {recipient_name},</p>
+        <p>Your booking has been confirmed.</p>
+        <ul>
+            <li><strong>Venue:</strong> {booking_details.get('venue_name')}</li>
+            <li><strong>Check-in:</strong> {booking_details.get('start_date')}</li>
+            <li><strong>Check-out:</strong> {booking_details.get('end_date')}</li>
+            <li><strong>Amount:</strong> ₹{booking_details.get('amount')}</li>
+            <li><strong>Transaction ID:</strong> {booking_details.get('transaction_id')}</li>
+        </ul>
+        <p>Thank you for choosing StudySpace!</p>
+        """
+        return await _send_email(recipient_email, "Booking Confirmation - StudySpace", html_content)
     except Exception as e:
         print(f"Failed to send booking confirmation email: {e}")
         return False
@@ -81,18 +94,19 @@ async def send_booking_extension_email(
             - days_extended: Number of days extended
     """
     try:
-        message = MessageSchema(
-            subject="Booking Extended - StudySpace",
-            recipients=[recipient_email],
-            template_body={
-                "recipient_name": recipient_name,
-                **extension_details
-            },
-            subtype=MessageType.html
-        )
-        
-        await fm.send_message(message, template_name="booking_extension.html")
-        return True
+        html_content = f"""
+        <h2>Booking Extended!</h2>
+        <p>Dear {recipient_name},</p>
+        <p>Your booking has been successfully extended.</p>
+        <ul>
+            <li><strong>Venue:</strong> {extension_details.get('venue_name')}</li>
+            <li><strong>Original End Date:</strong> {extension_details.get('old_end_date')}</li>
+            <li><strong>New End Date:</strong> {extension_details.get('new_end_date')}</li>
+            <li><strong>Days Extended:</strong> {extension_details.get('days_extended')}</li>
+            <li><strong>Extension Amount:</strong> ₹{extension_details.get('extension_amount')}</li>
+        </ul>
+        """
+        return await _send_email(recipient_email, "Booking Extended - StudySpace", html_content)
     except Exception as e:
         print(f"Failed to send booking extension email: {e}")
         return False
@@ -117,18 +131,15 @@ async def send_inquiry_response_email(
             - venue_phone: Contact phone number
     """
     try:
-        message = MessageSchema(
-            subject="Your Inquiry Has Been Answered - StudySpace",
-            recipients=[recipient_email],
-            template_body={
-                "recipient_name": recipient_name,
-                **inquiry_details
-            },
-            subtype=MessageType.html
-        )
-        
-        await fm.send_message(message, template_name="inquiry_response.html")
-        return True
+        html_content = f"""
+        <h2>Your Inquiry Has Been Answered!</h2>
+        <p>Dear {recipient_name},</p>
+        <p>The venue owner has responded to your inquiry about {inquiry_details.get('venue_name')}.</p>
+        <p><strong>Your Question:</strong><br>{inquiry_details.get('original_question')}</p>
+        <p><strong>Response:</strong><br>{inquiry_details.get('response')}</p>
+        <p>You can contact them at: {inquiry_details.get('venue_phone')}</p>
+        """
+        return await _send_email(recipient_email, "Your Inquiry Has Been Answered - StudySpace", html_content)
     except Exception as e:
         print(f"Failed to send inquiry response email: {e}")
         return False
@@ -154,18 +165,18 @@ async def send_new_inquiry_notification_email(
             - inquiry_date: Date of inquiry
     """
     try:
-        message = MessageSchema(
-            subject="New Inquiry for Your Venue - StudySpace",
-            recipients=[recipient_email],
-            template_body={
-                "recipient_name": recipient_name,
-                **inquiry_details
-            },
-            subtype=MessageType.html
-        )
-        
-        await fm.send_message(message, template_name="new_inquiry_notification.html")
-        return True
+        html_content = f"""
+        <h2>New Inquiry for {inquiry_details.get('venue_name')}</h2>
+        <p>Dear {recipient_name},</p>
+        <p>You have received a new inquiry from a student.</p>
+        <ul>
+            <li><strong>Student:</strong> {inquiry_details.get('student_name')}</li>
+            <li><strong>Email:</strong> {inquiry_details.get('student_email')}</li>
+            <li><strong>Phone:</strong> {inquiry_details.get('student_phone', 'Not provided')}</li>
+        </ul>
+        <p><strong>Question:</strong><br>{inquiry_details.get('question')}</p>
+        """
+        return await _send_email(recipient_email, "New Inquiry for Your Venue - StudySpace", html_content)
     except Exception as e:
         print(f"Failed to send new inquiry notification email: {e}")
         return False
@@ -263,15 +274,11 @@ async def send_otp_email(
         </html>
         """
         
-        message = MessageSchema(
-            subject=subject_map.get(otp_type, "Your OTP - StudySpace"),
-            recipients=[recipient_email],
-            body=html_content,
-            subtype=MessageType.html
+        return await _send_email(
+            recipient_email,
+            subject_map.get(otp_type, "Your OTP - StudySpace"),
+            html_content
         )
-        
-        await fm.send_message(message)
-        return True
     except Exception as e:
         print(f"Failed to send OTP email: {e}")
         return False

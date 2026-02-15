@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     mail_port: Optional[int] = 587
     mail_server: Optional[str] = "smtp.gmail.com"
     
+    # SendGrid Configuration (recommended for Render)
+    sendgrid_api_key: Optional[str] = ""
+    
     class Config:
         env_file = ".env"
 
