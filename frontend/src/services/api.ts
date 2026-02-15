@@ -5,14 +5,21 @@ import axios from 'axios';
 
 // Create an Axios instance
 const getBaseUrl = () => {
+  // Check for environment variable first (for production/deployment)
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
   // If running on localhost (computer), use localhost
   if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return 'http://localhost:8000';
   }
+  
   // If running on network (mobile), use the same hostname (computer IP) + port 8000
   if (typeof window !== 'undefined') {
     return `http://${window.location.hostname}:8000`;
   }
+  
   return 'http://localhost:8000'; // Fallback
 };
 
