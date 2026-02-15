@@ -86,7 +86,7 @@ export const AdminListings: React.FC = () => {
                 // Show flag status instead of listing status
                 const isSevere = entityFlag.status === 'escalated' || entityFlag.status === 'rejected';
                 return (
-                    <Badge variant={isSevere ? 'danger' : 'warning'} className="flex items-center gap-1">
+                    <Badge variant={isSevere ? 'error' : 'warning'} className="flex items-center gap-1">
                         {isSevere ? <XCircle className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
                         {isSevere ? 'Suspended' : 'Flagged'}
                     </Badge>

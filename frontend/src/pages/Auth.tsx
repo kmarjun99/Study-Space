@@ -15,8 +15,8 @@ interface AuthProps {
 
 export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
   const [isRegister, setIsRegister] = useState(false);
-  const [email, setEmail] = useState('student1@studyspace.com');
-  const [password, setPassword] = useState('student123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const [role, setRole] = useState<UserRole>(UserRole.STUDENT);
   const [name, setName] = useState('');
@@ -24,7 +24,6 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
 
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [showDemoCreds, setShowDemoCreds] = useState(false);
 
   // Email validation states
   const [emailError, setEmailError] = useState<string>('');
@@ -594,58 +593,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
 
 
           <div className={`text-center text-xs text-gray-400 mt-6 space-y-2 ${isRegister ? 'animate-in fade-in duration-500 delay-1000' : 'animate-in fade-in duration-500 delay-800'}`}>
-            <button
-              type="button"
-              onClick={() => setShowDemoCreds(!showDemoCreds)}
-              className="font-bold text-sm text-indigo-600 hover:text-indigo-700 underline focus:outline-none transition-all hover:scale-105 inline-flex items-center gap-2"
-            >
-              {showDemoCreds ? '👆 Hide Demo Credentials' : '🎯 Show Demo Credentials (Click to Fill)'}
-            </button>
-
-            {showDemoCreds && (
-              <div className="animate-in slide-in-from-top-2 fade-in duration-300 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-4 border border-indigo-100 shadow-sm mt-3">
-                <div className="space-y-2">
-                  <p onClick={() => { setEmail('superadmin@studyspace.com'); setPassword('superadmin123'); setName(''); }} className="cursor-pointer hover:bg-white/60 transition-all p-2.5 rounded-xl hover:shadow-sm border border-transparent hover:border-indigo-200 text-gray-700 hover:text-indigo-700 font-medium text-left flex items-center gap-3">
-                    <span className="text-xl">👑</span>
-                    <div className="flex-1">
-                      <div className="font-semibold">Super Admin</div>
-                      <div className="text-xs text-gray-500">superadmin@studyspace.com</div>
-                    </div>
-                  </p>
-                  <p onClick={() => { setEmail('admin@studyspace.com'); setPassword('admin123'); setRole(UserRole.ADMIN); }} className="cursor-pointer hover:bg-white/60 transition-all p-2.5 rounded-xl hover:shadow-sm border border-transparent hover:border-indigo-200 text-gray-700 hover:text-indigo-700 font-medium text-left flex items-center gap-3">
-                    <span className="text-xl">👔</span>
-                    <div className="flex-1">
-                      <div className="font-semibold">Admin (Default)</div>
-                      <div className="text-xs text-gray-500">admin@studyspace.com</div>
-                    </div>
-                  </p>
-                  <p onClick={() => { setEmail('centrallibrary@studyspace.com'); setPassword('admin123'); setRole(UserRole.ADMIN); }} className="cursor-pointer hover:bg-white/60 transition-all p-2.5 rounded-xl hover:shadow-sm border border-transparent hover:border-indigo-200 text-gray-700 hover:text-indigo-700 font-medium text-left flex items-center gap-3">
-                    <span className="text-xl">📚</span>
-                    <div className="flex-1">
-                      <div className="font-semibold">Central Library Owner</div>
-                      <div className="text-xs text-gray-500">centrallibrary@studyspace.com</div>
-                    </div>
-                  </p>
-                  <p onClick={() => { setEmail('studynook@studyspace.com'); setPassword('admin123'); setRole(UserRole.ADMIN); }} className="cursor-pointer hover:bg-white/60 transition-all p-2.5 rounded-xl hover:shadow-sm border border-transparent hover:border-indigo-200 text-gray-700 hover:text-indigo-700 font-medium text-left flex items-center gap-3">
-                    <span className="text-xl">💡</span>
-                    <div className="flex-1">
-                      <div className="font-semibold">Study Nook Owner</div>
-                      <div className="text-xs text-gray-500">studynook@studyspace.com</div>
-                    </div>
-                  </p>
-                  <p onClick={() => { setEmail('student1@studyspace.com'); setPassword('student123'); setRole(UserRole.STUDENT); }} className="cursor-pointer hover:bg-white/60 transition-all p-2.5 rounded-xl hover:shadow-sm border border-transparent hover:border-indigo-200 text-gray-700 hover:text-indigo-700 font-medium text-left flex items-center gap-3">
-                    <span className="text-xl">🎓</span>
-                    <div className="flex-1">
-                      <div className="font-semibold">Student</div>
-                      <div className="text-xs text-gray-500">student1@studyspace.com</div>
-                    </div>
-                  </p>
-                  <div className="text-[10px] text-gray-400 mt-3 pt-3 border-t border-indigo-100 text-center">
-                    ✨ Click any credential above to auto-fill
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Demo credentials removed for production */}
           </div>
         </div>
 
