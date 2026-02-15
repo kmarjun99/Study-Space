@@ -1,0 +1,73 @@
+services:
+  # Backend API Service
+  - type: web
+    name: studyspace-backend
+    runtime: python
+    region: singapore  # Change to oregon/frankfurt if needed
+    plan: free  # Free tier - spins down after 15min inactivity
+    branch: main
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    
+    envVars:
+      # Database (from Supabase)
+      - key: DATABASE_URL
+        sync: false  # You'll add this manually in Render dashboard
+      
+      # Security
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "10080"
+      - key: ENVIRONMENT
+        value: production
+      
+      # Redis (from Upstash - optional)
+      - key: REDIS_URL
+        sync: false
+      
+      # Email Configuration (Gmail)
+      - key: mail_username
+        sync: false
+      - key: mail_password
+        sync: false
+      - key: mail_from
+        value: StudySpace <noreply@studyspaceapp.in>
+      - key: mail_server
+        value: smtp.gmail.com
+      - key: mail_port
+        value: "587"
+      
+      # Razorpay Payment
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+    
+    autoDeploy: true
+
+  # Frontend Static Site
+  - type: web
+    name: studyspace-frontend
+    runtime: static
+    region: singapore
+    plan: free  # Free tier
+    branch: main
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: frontend/dist
+    
+    # Important: SPA routing
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    
+    envVars:
+      # Backend API URL - will be auto-populated after backend is deployed
+      - key: VITE_API_BASE_URL
+        value: https://studyspace-backend.onrender.com
+    
+    autoDeploy: true

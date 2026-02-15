@@ -59,6 +59,12 @@ origins = [
     "http://127.0.0.1:3002",
     "http://192.168.29.177:3000",
     "http://192.168.29.177:5173",
+    # Production domains
+    "https://studyspace-frontend.onrender.com",
+    "https://studyspace-backend.onrender.com",
+    "https://studyspaceapp.in",
+    "https://www.studyspaceapp.in",
+    "https://api.studyspaceapp.in",
     "*"
 ]
 
@@ -69,6 +75,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Health check endpoint for Render
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for deployment platforms"""
+    return {
+        "status": "healthy",
+        "service": "StudySpace API",
+        "environment": settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else "unknown"
+    }
 
 # Include Routers
 app.include_router(auth.router)
