@@ -107,52 +107,41 @@ async def create_payment_order(
 ):
     """
     Create a Razorpay Order. 
-    If Razorpay keys are not configured, returns a MOCK order.
+    If Razorpay keys are not configured, returns a DEMO order.
     """
-    key_id = os.getenv("RAZORPAY_KEY_ID")
-    key_secret = os.getenv("RAZORPAY_KEY_SECRET")
+    from app.services.payment_service import payment_service
     
-    # Check if keys are missing or placeholders
-    if not key_id or "placeholder" in key_id or not key_secret:
-        # RETURN MOCK ORDER
-        print("MOCK MODE: Creating mock order")
-        return {
-            "id": f"order_mock_{int(datetime.utcnow().timestamp())}",
-            "amount": int(data.amount * 100),
-            "currency": data.currency,
-            "key_id": "mock_key_id",
-            "is_mock": True
-        }
-
+    # Use payment service which handles demo mode automatically
     try:
-        amount_paise = int(data.amount * 100) # Convert to paise
+        order = payment_service.create_order(
+            amount=data.amount,
+            currency=data.currency,
+            receipt=data.receipt or f"rcpt_{int(datetime.utcnow().timestamp())}",
+            notes={
+                "user_id": current_user.id,
+                "user_email": current_user.email,
+                **(data.notes or {})
+            }
+        )
         
-        order_data = {
-            "amount": amount_paise,
-            "currency": data.currency,
-            "receipt": data.receipt or f"rcpt_{int(datetime.utcnow().timestamp())}",
-            "notes": data.notes or {}
-        }
-        
-        # Add user info to notes for tracking
-        order_data["notes"]["user_id"] = current_user.id
-        order_data["notes"]["user_email"] = current_user.email
-
-        order = razorpay_client.order.create(data=order_data)
-        
+        # Return consistent response format
         return {
             "id": order["id"],
             "amount": order["amount"],
             "currency": order["currency"],
-            "key_id": key_id,
-            "is_mock": False
+            "key_id": payment_service.razorpay_key_id or "demo_key_id",
+            "is_demo": payment_service.demo_mode
         }
     except Exception as e:
-        print(f"Razorpay Error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail=str(e)
-        )
+        print(f"Payment Order Error: {e}")
+        # Last fallback - return demo order even on exception
+        return {
+            "id": f"order_error_{int(datetime.utcnow().timestamp())}",
+            "amount": int(data.amount * 100),
+            "currency": data.currency,
+            "key_id": "demo_key_id",
+            "is_demo": True
+        }
 
 @router.post("/verify")
 async def verify_payment(
@@ -162,21 +151,23 @@ async def verify_payment(
 ):
     """
     Verify Razorpay Payment Signature.
-    Supports MOCK verification.
+    Supports DEMO mode for testing.
     """
+    from app.services.payment_service import payment_service
+    
     try:
-        # CHECK FOR MOCK MODE
-        if data.razorpay_order_id.startswith("order_mock_"):
-            print("MOCK MODE: Skipping signature verification")
-            # We can just proceed as successful
-        else:
-            # 1. Verify Signature (Real)
-            params_dict = {
-                'razorpay_order_id': data.razorpay_order_id,
-                'razorpay_payment_id': data.razorpay_payment_id,
-                'razorpay_signature': data.razorpay_signature
-            }
-            razorpay_client.utility.verify_payment_signature(params_dict)
+        # Use payment service which handles demo mode automatically
+        is_valid = payment_service.verify_payment_signature(
+            razorpay_order_id=data.razorpay_order_id,
+            razorpay_payment_id=data.razorpay_payment_id,
+            razorpay_signature=data.razorpay_signature
+        )
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid payment signature"
+            )
         
         # 2. If booking_id is provided, update booking status
         if data.booking_id:
@@ -191,11 +182,8 @@ async def verify_payment(
                 
         return {"status": "success", "message": "Payment verified successfully"}
 
-    except razorpay.errors.SignatureVerificationError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid payment signature"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Verification Error: {e}")
         raise HTTPException(

@@ -168,6 +168,7 @@ export const paymentService = {
         amount: number;
         currency: string;
         key_id: string;
+        is_demo?: boolean;
     }> {
         const response = await api.post('/payments/create-order', { amount, currency });
         return response.data;

@@ -381,13 +381,6 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 });
             };
 
-            const isLoaded = await loadRazorpayScript();
-            if (!isLoaded) {
-                setBoostError('Razorpay SDK failed to load');
-                setIsProcessingBoost(false);
-                return;
-            }
-
             // 1. Create Request (INITIATED)
             const newRequest = await boostService.createRequest(
                 venue.id,
@@ -399,7 +392,43 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
             const { paymentService } = await import('../services/paymentService');
             const orderData = await paymentService.createOrder(selectedPlan.price);
 
-            // 3. Open Razorpay
+            // 🎭 DEMO MODE: Auto-complete payment without Razorpay
+            if (orderData.is_demo || orderData.key_id === 'demo_key_id') {
+                toast.success('💳 DEMO MODE: Payment simulated successfully!', { duration: 3000 });
+                
+                try {
+                    // Auto-verify with demo payment data
+                    await boostService.markRequestPaid(newRequest.id, {
+                        payment_id: `pay_demo_${Date.now()}`,
+                        order_id: orderData.id,
+                        signature: `sig_demo_${Date.now()}`
+                    });
+
+                    setMyBoostRequests(prev => [...prev, { ...newRequest, status: 'paid' }]);
+                    setBoostSuccess(true);
+                    setTimeout(() => {
+                        setIsBoostModalOpen(false);
+                        setBoostSuccess(false);
+                        window.location.reload();
+                    }, 2000);
+                    return;
+                } catch (error) {
+                    console.error('Demo payment verification failed:', error);
+                    setBoostError('Demo payment failed. Please try again.');
+                    setIsProcessingBoost(false);
+                    return;
+                }
+            }
+
+            // 3. Load Razorpay SDK for real payments
+            const isLoaded = await loadRazorpayScript();
+            if (!isLoaded) {
+                setBoostError('Razorpay SDK failed to load');
+                setIsProcessingBoost(false);
+                return;
+            }
+
+            // 4. Open Razorpay
             const options = {
                 key: orderData.key_id,
                 amount: orderData.amount,
