@@ -307,8 +307,8 @@ export interface SubscriptionPlan {
   isDefault: boolean;
   createdBy: string;
   createdAt: string;
-  billingCycle: 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
-  allowedListingTypes: string[];
+  billingCycle?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+  allowedListingTypes?: string[];
   ctaLabel?: string;
 }
 

@@ -32,7 +32,7 @@ import { SuperAdminAccommodationReview } from './pages/SuperAdminAccommodationRe
 import { SuperAdminReadingRoomReview } from './pages/SuperAdminReadingRoomReview';
 import { SupportPage } from './pages/Support';
 import { MessagesPage } from './pages/MessagesPage';
-import { MockPaymentGateway } from './pages/MockPaymentGateway';
+import MockPaymentGateway from './pages/MockPaymentGateway';
 import { AppState, UserRole, User, Booking, CabinStatus, ReadingRoom, Cabin, Notification, Review, WaitlistEntry, Accommodation, SupportTicket, PlatformSettings, PromotionPlan, PromotionRequest, Message, Conversation } from './types';
 import { MOCK_USERS, MOCK_BOOKINGS, generateCabins, MOCK_NOTIFICATIONS, MOCK_READING_ROOMS, MOCK_REVIEWS, MOCK_ACCOMMODATIONS, MOCK_TICKETS, MOCK_PLANS, MOCK_PROMOTION_PLANS, MOCK_PROMOTION_REQUESTS } from './services/mockData';
 import { realTimeService } from './services/realTimeService';
