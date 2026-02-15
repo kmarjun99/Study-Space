@@ -93,25 +93,63 @@ export const OwnerListingPayment: React.FC<OwnerListingPaymentProps> = ({
     setPaymentStep('processing');
 
     try {
-      // 1. Load Razorpay Script
+      // 1. Create Order FIRST (to check for demo mode)
+      const amount = calculateTotal(selectedPlan.price);
+      const { paymentService } = await import('../services/paymentService');
+      const orderData = await paymentService.createOrder(amount);
+
+      // 🎭 DEMO MODE: Auto-complete payment instantly
+      if (orderData.is_demo || orderData.key_id === 'demo_key_id' || orderData.key_id === 'your_razorpay_key_id') {
+        toast.success('💳 DEMO MODE: Processing payment...', { duration: 2000 });
+        
+        // Simulate payment processing
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        try {
+          // Auto-verify with demo payment data
+          await paymentService.verifyPayment({
+            razorpay_order_id: orderData.id,
+            razorpay_payment_id: `pay_demo_${Date.now()}`,
+            razorpay_signature: `sig_demo_${Date.now()}`
+          });
+
+          // Submit venue activation
+          await axios.post(
+            `${API_BASE_URL}/payments/venue/confirm-subscription`,
+            {
+              venue_id: venueId,
+              venue_type: venueType,
+              subscription_plan_id: selectedPlanId,
+              payment_id: `pay_demo_${Date.now()}`,
+              order_id: orderData.id
+            },
+            { headers: { 'Authorization': `Bearer ${getAuthToken()}` } }
+          );
+
+          setPaymentStep('success');
+          toast.success('✅ Demo payment completed successfully!');
+          
+          setTimeout(() => {
+            onPaymentSuccess();
+          }, 2000);
+          return;
+        } catch (error) {
+          console.error('Demo payment failed:', error);
+          toast.error('Payment processing failed. Please try again.');
+          setLoading(false);
+          setPaymentStep('plan-selection');
+          return;
+        }
+      }
+
+      // 2. REAL PAYMENT MODE: Load Razorpay Script
       const isLoaded = await loadRazorpayScript();
       if (!isLoaded) {
         toast.error('Razorpay SDK failed to load');
         setLoading(false);
-        setPaymentStep('plan-selection'); // Go back
+        setPaymentStep('plan-selection');
         return;
       }
-
-      // 2. Create Order
-      // Note: For owners, we might want to pass more metadata, but createOrder endpoint handles basic amount
-      // The backend 'notes' can capture venue info if we pass it, OR we rely on flow state
-      // For now, let's stick to the generic createOrder which takes amount. 
-      // Ideal: Update createOrder to accept metadata. But for now, amount is key.
-      const amount = calculateTotal(selectedPlan.price);
-
-      // Dynamic Import to avoid huge bundle if not needed elsewhere immediately
-      const { paymentService } = await import('../services/paymentService');
-      const orderData = await paymentService.createOrder(amount);
 
       // 3. Initialize Razorpay Options
       const options = {

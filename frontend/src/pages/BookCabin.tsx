@@ -104,16 +104,44 @@ export const BookCabin: React.FC<BookCabinProps> = ({ state, user, onBookCabin, 
     setPaymentStep('payment');
 
     try {
-      // 1. Load Razorpay Script
+      // 1. Create Order FIRST (to check for demo mode)
+      const orderData = await paymentService.createOrder(selectedCabin.price * duration);
+
+      // 🎭 DEMO MODE: Auto-complete payment instantly
+      if (orderData.is_demo || orderData.key_id === 'demo_key_id' || orderData.key_id === 'your_razorpay_key_id') {
+        toast.success('💳 DEMO MODE: Processing payment...', { duration: 2000 });
+        
+        // Simulate payment processing
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        try {
+          // Auto-verify with demo payment data
+          await paymentService.verifyPayment({
+            razorpay_order_id: orderData.id,
+            razorpay_payment_id: `pay_demo_${Date.now()}`,
+            razorpay_signature: `sig_demo_${Date.now()}`
+          });
+
+          // Complete booking
+          await onBookCabin(selectedCabin.id, duration);
+          setPaymentStep('success');
+          toast.success('✅ Booking confirmed successfully!');
+          return;
+        } catch (error) {
+          console.error('Demo payment failed:', error);
+          toast.error('Booking failed. Please try again.');
+          setPaymentStep('details');
+          return;
+        }
+      }
+
+      // 2. REAL PAYMENT MODE: Load Razorpay Script
       const isLoaded = await loadRazorpayScript();
       if (!isLoaded) {
         alert('Razorpay SDK failed to load. Please check your internet connection.');
         setPaymentStep('details');
         return;
       }
-
-      // 2. Create Order on Backend
-      const orderData = await paymentService.createOrder(selectedCabin.price * duration);
 
       // 3. Initialize Razorpay Options
       const options = {

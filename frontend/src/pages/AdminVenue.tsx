@@ -406,12 +406,51 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
         setBoostError(null);
 
         try {
-            // 0. Load Razorpay first
-            // Dynamic Import to ensure it's available
-            // const { paymentService } = await import('../services/paymentService'); // Import here or assume it's available
+            // 1. Create Request (INITIATED)
+            const newRequest = await boostService.createRequest(
+                venue.id,
+                'reading_room',
+                selectedPlan.id
+            );
 
-            // We need loadRazorpayScript helper here too. 
-            // Reuse logic? Or duplicate small helper.
+            // 2. Create Razorpay Order
+            const { paymentService } = await import('../services/paymentService');
+            const orderData = await paymentService.createOrder(selectedPlan.price);
+
+            // 🎭 DEMO MODE: Auto-complete payment instantly
+            if (orderData.is_demo || orderData.key_id === 'demo_key_id' || orderData.key_id === 'your_razorpay_key_id') {
+                toast.success('💳 DEMO MODE: Processing payment...', { duration: 2000 });
+                
+                // Simulate payment processing
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                try {
+                    // Auto-verify with demo payment data
+                    await boostService.markRequestPaid(newRequest.id, {
+                        payment_id: `pay_demo_${Date.now()}`,
+                        order_id: orderData.id,
+                        signature: `sig_demo_${Date.now()}`
+                    });
+
+                    setMyBoostRequests(prev => [...prev, { ...newRequest, status: 'paid' }]);
+                    setBoostSuccess(true);
+                    toast.success('✅ Boost payment completed successfully!');
+                    
+                    setTimeout(() => {
+                        setIsBoostModalOpen(false);
+                        setBoostSuccess(false);
+                        window.location.reload();
+                    }, 2000);
+                    return;
+                } catch (error) {
+                    console.error('Demo payment verification failed:', error);
+                    setBoostError('Payment verification failed. Please try again.');
+                    setIsProcessingBoost(false);
+                    return;
+                }
+            }
+
+            // 3. REAL PAYMENT MODE: Load Razorpay SDK
             const loadRazorpayScript = () => {
                 return new Promise((resolve) => {
                     if ((window as any).Razorpay) {
@@ -426,41 +465,6 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 });
             };
 
-            // 1. Create Request (INITIATED)
-            const newRequest = await boostService.createRequest(
-                venue.id,
-                'reading_room',
-                selectedPlan.id
-            );
-
-            // 2. Create Razorpay Order
-            const { paymentService } = await import('../services/paymentService');
-            const orderData = await paymentService.createOrder(selectedPlan.price);
-
-            // 🎭 DEMO MODE: Redirect to mock payment gateway
-            if (orderData.is_demo || orderData.key_id === 'demo_key_id') {
-                // Store callback info in sessionStorage
-                sessionStorage.setItem('boost_payment_callback', JSON.stringify({
-                    request_id: newRequest.id,
-                    venue_id: venue.id,
-                    venue_name: venue.name,
-                    plan_name: selectedPlan.name
-                }));
-                
-                // Redirect to mock payment gateway
-                const paymentUrl = `/mock-payment?` + new URLSearchParams({
-                    amount: orderData.amount.toString(),
-                    order_id: orderData.id,
-                    description: `${selectedPlan.name} for ${venue.name}`,
-                    merchant: 'StudySpace - Boost Venue',
-                    callback: window.location.pathname + window.location.search
-                }).toString();
-                
-                window.location.href = `#${paymentUrl}`;
-                return;
-            }
-
-            // 3. Load Razorpay SDK for real payments
             const isLoaded = await loadRazorpayScript();
             if (!isLoaded) {
                 setBoostError('Razorpay SDK failed to load');
