@@ -1,8 +1,7 @@
-import axios from 'axios';
 import { Message, Conversation } from '../types';
 import api from './api'; // Use centralized api instance with correct token
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 // Transform backend snake_case to frontend camelCase
 function transformMessage(backendMessage: any): Message {

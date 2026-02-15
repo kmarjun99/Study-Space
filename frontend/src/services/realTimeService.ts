@@ -31,7 +31,10 @@ class RealTimeService {
     if (!WEBSOCKET_ENABLED || this.hasConnected) return;
 
     try {
-      this.socket = new WebSocket('ws://localhost:8000/ws/cabins');
+      // Get WebSocket URL from environment or default to localhost
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const wsUrl = apiUrl.replace(/^http/, 'ws').replace(/^https/, 'wss');
+      this.socket = new WebSocket(`${wsUrl}/ws/cabins`);
       this.hasConnected = true;
 
       this.socket.onopen = () => {
