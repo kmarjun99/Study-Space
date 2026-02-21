@@ -668,7 +668,40 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ state, user,
                                                             <span>Contact</span>
                                                         </button>
                                                         <button
-                                                            onClick={() => navigator.share ? navigator.share({ title: bookingVenue?.name, text: `Check out ${bookingVenue?.name}!` }) : navigator.clipboard.writeText(window.location.href)}
+                                                            onClick={async () => {
+                                                                if (!bookingVenue) return;
+                                                                
+                                                                // Generate the venue URL
+                                                                const venueUrl = `${window.location.origin}/#/student/reading-room/${bookingVenue.id}`;
+                                                                const shareData = {
+                                                                    title: bookingVenue.name,
+                                                                    text: `Check out ${bookingVenue.name} - ${bookingVenue.locality || bookingVenue.city || 'Study Space'}`,
+                                                                    url: venueUrl
+                                                                };
+                                                                
+                                                                try {
+                                                                    // Try Web Share API first (mobile)
+                                                                    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+                                                                        await navigator.share(shareData);
+                                                                        toast.success('Shared successfully!');
+                                                                    } else {
+                                                                        // Fallback to clipboard
+                                                                        await navigator.clipboard.writeText(venueUrl);
+                                                                        toast.success('Link copied to clipboard!');
+                                                                    }
+                                                                } catch (error: any) {
+                                                                    // User cancelled or error occurred
+                                                                    if (error.name !== 'AbortError') {
+                                                                        // Try clipboard as last resort
+                                                                        try {
+                                                                            await navigator.clipboard.writeText(venueUrl);
+                                                                            toast.success('Link copied to clipboard!');
+                                                                        } catch {
+                                                                            toast.error('Unable to share. Please try again.');
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }}
                                                             className="bg-white/20 hover:bg-white/30 backdrop-blur-sm px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border border-white/20"
                                                         >
                                                             <Share2 className="w-3.5 h-3.5" />
