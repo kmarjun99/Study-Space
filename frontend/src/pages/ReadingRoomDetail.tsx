@@ -66,12 +66,22 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
 
     // Parse venue images
     const venueImages = useMemo(() => {
-        if (!venue?.images) return [];
+        if (!venue?.images) {
+            // Fallback to imageUrl if images is empty
+            return venue?.imageUrl ? [venue.imageUrl] : [];
+        }
         try {
+            // Try to parse as JSON array
             const parsed = JSON.parse(venue.images);
-            return Array.isArray(parsed) ? parsed : [venue.images];
+            return Array.isArray(parsed) && parsed.length > 0 ? parsed : (venue.imageUrl ? [venue.imageUrl] : []);
         } catch {
-            return venue.imageUrl ? [venue.imageUrl] : [];
+            // If parsing fails, check if it's a stringified URL or an actual URL
+            // If images is a string that looks like a URL, return it as an array
+            if (typeof venue.images === 'string' && (venue.images.startsWith('http') || venue.images.startsWith('data:'))) {
+                return [venue.images];
+            }
+            // Final fallback to imageUrl
+            return venue?.imageUrl ? [venue.imageUrl] : [];
         }
     }, [venue]);
 

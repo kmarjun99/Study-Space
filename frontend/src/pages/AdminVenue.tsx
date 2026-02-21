@@ -318,13 +318,20 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImages(prev => [...prev, reader.result as string]);
-            };
-            reader.readAsDataURL(file);
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            // Process multiple files
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setImages(prev => [...prev, reader.result as string]);
+                };
+                reader.readAsDataURL(file);
+            });
+            // Show success message
+            toast.success(`✅ ${files.length} image${files.length > 1 ? 's' : ''} uploaded successfully!`);
+            // Reset input
+            e.target.value = '';
         }
     };
 
@@ -349,7 +356,10 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
 
     const handlePaymentSuccess = () => {
         setIsPaymentModalOpen(false);
-        setTimeout(() => window.location.reload(), 1000);
+        toast.success('🎉 Venue submitted successfully! Redirecting to dashboard...');
+        setTimeout(() => {
+            navigate('/admin/listings');
+        }, 1500);
     };
 
     // --- Cabin Management State ---
@@ -795,8 +805,9 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 {!isReadOnly && (
                     <div className="relative aspect-video rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer">
                         <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                        <span className="text-xs text-gray-500">Upload Photo</span>
-                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
+                        <span className="text-xs text-gray-500">Upload Photos</span>
+                        <span className="text-xs text-gray-400 mt-1">(Multiple)</span>
+                        <input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
                     </div>
                 )}
             </div>
