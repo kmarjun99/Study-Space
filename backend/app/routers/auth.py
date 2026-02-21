@@ -274,35 +274,38 @@ async def read_users_me(
     
     return user_data
 
-@router.delete("/delete-test-user/{email}")
+class DeleteUserRequest(BaseModel):
+    email: str
+    secret: str
+
+@router.post("/delete-test-user")
 async def delete_test_user(
-    email: str,
-    secret: str,
+    request: DeleteUserRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Emergency endpoint to delete test users
     Use secret=cleanup123 to access
     """
-    if secret != "cleanup123":
+    if request.secret != "cleanup123":
         raise HTTPException(status_code=403, detail="Invalid secret")
     
     # Delete from users table
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalars().first()
     
     if user:
         await db.delete(user)
         await db.commit()
-        return {"success": True, "message": f"Deleted user: {email}"}
+        return {"success": True, "message": f"Deleted user: {request.email}"}
     
     # Also delete from pending_registrations
-    result = await db.execute(select(PendingRegistration).where(PendingRegistration.email == email))
+    result = await db.execute(select(PendingRegistration).where(PendingRegistration.email == request.email))
     pending = result.scalars().first()
     
     if pending:
         await db.delete(pending)
         await db.commit()
-        return {"success": True, "message": f"Deleted pending registration: {email}"}
+        return {"success": True, "message": f"Deleted pending registration: {request.email}"}
     
-    return {"success": False, "message": f"User {email} not found"}
+    return {"success": False, "message": f"User {request.email} not found"}
