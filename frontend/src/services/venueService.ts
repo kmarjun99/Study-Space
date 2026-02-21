@@ -28,7 +28,8 @@ export const venueService = {
             latitude: room.latitude,
             longitude: room.longitude,
             status: room.status,
-            isVerified: room.is_verified
+            isVerified: room.is_verified,
+            createdAt: room.created_at
         }));
     },
 
@@ -48,7 +49,8 @@ export const venueService = {
             contactPhone: room.contact_phone,
             amenities: room.amenities || [],
             status: room.status,
-            isVerified: room.is_verified
+            isVerified: room.is_verified,
+            createdAt: room.created_at
         }));
     },
 
@@ -68,7 +70,8 @@ export const venueService = {
             contactPhone: room.contact_phone,
             amenities: room.amenities || [],
             status: room.status,
-            isVerified: room.is_verified
+            isVerified: room.is_verified,
+            createdAt: room.created_at
         };
     },
 

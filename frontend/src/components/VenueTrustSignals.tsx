@@ -18,9 +18,9 @@ export const VenueTrustSignals: React.FC<VenueTrustSignalsProps> = ({
     reviewCount = 0,
     className = ''
 }) => {
-    // Generate estimated values if not provided
-    const displaySubscribers = activeSubscribers > 0 ? activeSubscribers : Math.floor(Math.random() * 15) + 5;
-    const displayMonths = monthsOnPlatform > 0 ? monthsOnPlatform : Math.floor(Math.random() * 12) + 3;
+    // Use real data - no random fallback
+    const displaySubscribers = activeSubscribers;
+    const displayMonths = monthsOnPlatform;
 
     return (
         <div className={`flex flex-wrap gap-2 md:gap-3 ${className}`}>

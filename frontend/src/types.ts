@@ -83,6 +83,7 @@ export interface ReadingRoom {
   isFeatured?: boolean;
   featuredPlan?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   featuredExpiry?: string;
+  createdAt?: string; // Venue creation date
   // Payment & Subscription tracking
   subscriptionPlanId?: string;
   paymentId?: string;

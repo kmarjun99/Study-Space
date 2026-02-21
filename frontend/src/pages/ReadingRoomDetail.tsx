@@ -112,6 +112,31 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
         return { average: total / reviews.length, count: reviews.length };
     }, [state.reviews, roomId]);
 
+    // Calculate active students (unique users with active bookings at this venue)
+    const activeStudents = useMemo(() => {
+        if (!roomId || !state.bookings) return 0;
+        const now = new Date();
+        const activeBookings = state.bookings.filter(booking => {
+            const cabin = state.cabins.find(c => c.id === booking.cabinId);
+            return cabin && 
+                   cabin.readingRoomId === roomId && 
+                   new Date(booking.endDate) >= now;
+        });
+        // Count unique users
+        const uniqueUsers = new Set(activeBookings.map(b => b.userId));
+        return uniqueUsers.size;
+    }, [roomId, state.bookings, state.cabins]);
+
+    // Calculate months on platform
+    const monthsOnPlatform = useMemo(() => {
+        if (!venue?.createdAt) return 0;
+        const created = new Date(venue.createdAt);
+        const now = new Date();
+        const diffMonths = (now.getFullYear() - created.getFullYear()) * 12 + 
+                          (now.getMonth() - created.getMonth());
+        return Math.max(0, diffMonths);
+    }, [venue?.createdAt]);
+
     // User waitlist entries
     const userWaitlist = useMemo(() => {
         return state.waitlist
@@ -278,6 +303,8 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
                             {/* Trust Signals */}
                             <VenueTrustSignals
                                 isVerified={venue.isVerified}
+                                activeSubscribers={activeStudents}
+                                monthsOnPlatform={monthsOnPlatform}
                                 rating={venueRating.average}
                                 reviewCount={venueRating.count}
                                 className="mb-4"
