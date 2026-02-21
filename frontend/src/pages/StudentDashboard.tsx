@@ -671,8 +671,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ state, user,
                                                             onClick={async () => {
                                                                 if (!bookingVenue) return;
                                                                 
-                                                                // Generate booking details text
-                                                                const venueUrl = `${window.location.origin}/#/student/reading-room/${bookingVenue.id}`;
+                                                                // Generate booking details text without exposing full URL
                                                                 const bookingDetails = `📚 My Study Space Booking
 
 🏢 ${bookingVenue.name}
@@ -682,7 +681,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ state, user,
 📅 Valid: ${formatToIST(booking.startDate)} to ${formatToIST(booking.endDate)}
 ⏰ Days Left: ${daysRemaining}
 
-🔗 View Venue: ${venueUrl}`;
+✨ View on StudySpace App (studyspaceapp.in)`;
                                                                 
                                                                 const shareData = {
                                                                     title: `My Booking at ${bookingVenue.name}`,
