@@ -54,6 +54,15 @@ export const OwnerListingPayment: React.FC<OwnerListingPaymentProps> = ({
     }
   }, [subscriptionPlans, selectedPlanId]);
 
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset all states when modal closes
+      setLoading(false);
+      setPaymentStep('plan-selection');
+    }
+  }, [isOpen]);
+
   const selectedPlan = subscriptionPlans.find(p => p.id === selectedPlanId);
 
   const loadRazorpayScript = (): Promise<boolean> => {
@@ -120,7 +129,11 @@ export const OwnerListingPayment: React.FC<OwnerListingPaymentProps> = ({
 
           toast.success('✅ Demo payment completed successfully!');
           
-          // Call onSuccess immediately
+          // Reset states before calling onSuccess
+          setLoading(false);
+          setPaymentStep('plan-selection');
+          
+          // Call onSuccess to trigger parent navigation
           onSuccess();
           return;
         } catch (error) {
