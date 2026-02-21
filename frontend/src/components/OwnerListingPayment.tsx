@@ -118,12 +118,10 @@ export const OwnerListingPayment: React.FC<OwnerListingPaymentProps> = ({
             { headers: { 'Authorization': `Bearer ${getAuthToken()}` } }
           );
 
-          setPaymentStep('success');
           toast.success('✅ Demo payment completed successfully!');
           
-          setTimeout(() => {
-            onPaymentSuccess();
-          }, 2000);
+          // Call onSuccess immediately
+          onSuccess();
           return;
         } catch (error) {
           console.error('Demo payment failed:', error);
@@ -189,9 +187,9 @@ export const OwnerListingPayment: React.FC<OwnerListingPaymentProps> = ({
               }
             );
 
-            setPaymentStep('success');
             toast.success('Payment verified & Venue submitted!');
-            setTimeout(onSuccess, 2000);
+            // Call onSuccess immediately without showing intermediate success modal
+            onSuccess();
 
           } catch (err: any) {
             console.error("Verification/Submission error:", err);
