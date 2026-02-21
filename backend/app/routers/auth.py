@@ -273,3 +273,36 @@ async def read_users_me(
     user_data.has_active_waitlist = has_active
     
     return user_data
+
+@router.delete("/delete-test-user/{email}")
+async def delete_test_user(
+    email: str,
+    secret: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Emergency endpoint to delete test users
+    Use secret=cleanup123 to access
+    """
+    if secret != "cleanup123":
+        raise HTTPException(status_code=403, detail="Invalid secret")
+    
+    # Delete from users table
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    
+    if user:
+        await db.delete(user)
+        await db.commit()
+        return {"success": True, "message": f"Deleted user: {email}"}
+    
+    # Also delete from pending_registrations
+    result = await db.execute(select(PendingRegistration).where(PendingRegistration.email == email))
+    pending = result.scalars().first()
+    
+    if pending:
+        await db.delete(pending)
+        await db.commit()
+        return {"success": True, "message": f"Deleted pending registration: {email}"}
+    
+    return {"success": False, "message": f"User {email} not found"}
