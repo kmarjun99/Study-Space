@@ -671,31 +671,41 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ state, user,
                                                             onClick={async () => {
                                                                 if (!bookingVenue) return;
                                                                 
-                                                                // Generate the venue URL
+                                                                // Generate booking details text
                                                                 const venueUrl = `${window.location.origin}/#/student/reading-room/${bookingVenue.id}`;
+                                                                const bookingDetails = `📚 My Study Space Booking
+
+🏢 ${bookingVenue.name}
+📍 ${bookingVenue.locality || bookingVenue.city || bookingVenue.address || 'Location'}
+
+🪑 Cabin: ${booking.cabinNumber || 'N/A'}
+📅 Valid: ${formatToIST(booking.startDate)} to ${formatToIST(booking.endDate)}
+⏰ Days Left: ${daysRemaining}
+
+🔗 View Venue: ${venueUrl}`;
+                                                                
                                                                 const shareData = {
-                                                                    title: bookingVenue.name,
-                                                                    text: `Check out ${bookingVenue.name} - ${bookingVenue.locality || bookingVenue.city || 'Study Space'}`,
-                                                                    url: venueUrl
+                                                                    title: `My Booking at ${bookingVenue.name}`,
+                                                                    text: bookingDetails
                                                                 };
                                                                 
                                                                 try {
                                                                     // Try Web Share API first (mobile)
                                                                     if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
                                                                         await navigator.share(shareData);
-                                                                        toast.success('Shared successfully!');
+                                                                        toast.success('Booking details shared successfully!');
                                                                     } else {
                                                                         // Fallback to clipboard
-                                                                        await navigator.clipboard.writeText(venueUrl);
-                                                                        toast.success('Link copied to clipboard!');
+                                                                        await navigator.clipboard.writeText(bookingDetails);
+                                                                        toast.success('Booking details copied to clipboard!');
                                                                     }
                                                                 } catch (error: any) {
                                                                     // User cancelled or error occurred
                                                                     if (error.name !== 'AbortError') {
                                                                         // Try clipboard as last resort
                                                                         try {
-                                                                            await navigator.clipboard.writeText(venueUrl);
-                                                                            toast.success('Link copied to clipboard!');
+                                                                            await navigator.clipboard.writeText(bookingDetails);
+                                                                            toast.success('Booking details copied to clipboard!');
                                                                         } catch {
                                                                             toast.error('Unable to share. Please try again.');
                                                                         }
