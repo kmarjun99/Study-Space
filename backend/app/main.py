@@ -147,6 +147,17 @@ async def startup():
             print("✅ pending_registrations table verified/created")
         except Exception as e:
             print(f"⚠️  Could not create pending_registrations table: {e}")
+        
+        # Clean up expired pending registrations
+        try:
+            result = await conn.execute(text("""
+                DELETE FROM pending_registrations WHERE expires_at < NOW()
+            """))
+            deleted_count = result.rowcount
+            if deleted_count > 0:
+                print(f"🧹 Cleaned up {deleted_count} expired pending registrations")
+        except Exception as e:
+            print(f"⚠️  Could not clean up expired registrations: {e}")
     
     # Auto-create admin user if it doesn't exist
     from app.database import AsyncSessionLocal
