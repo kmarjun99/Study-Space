@@ -40,26 +40,6 @@ export const authService = {
         return response.data;
     },
 
-    // New OTP-verified registration flow
-    initiateRegistration: async (email: string, password: string, role: string, name: string, phone?: string) => {
-        const response = await api.post('/auth/initiate-registration', {
-            email,
-            password,
-            role,
-            name,
-            phone
-        });
-        return response.data;
-    },
-
-    verifyAndRegister: async (email: string, otpCode: string) => {
-        const response = await api.post('/auth/verify-and-register', {
-            email,
-            otp_code: otpCode
-        });
-        return response.data;
-    },
-
     // OTP Methods
     sendOtp: async (email: string, phone: string | null, otpType: string) => {
         const response = await api.post('/otp/send', {
@@ -75,6 +55,17 @@ export const authService = {
             email,
             otp_code: otpCode,
             otp_type: otpType
+        });
+        return response.data;
+    },
+
+    completeRegistration: async (email: string, otpCode: string, password: string, name: string, role: string) => {
+        const response = await api.post('/auth/complete-registration', {
+            email,
+            otp_code: otpCode,
+            password,
+            name,
+            role
         });
         return response.data;
     },

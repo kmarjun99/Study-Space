@@ -15,6 +15,17 @@ class OTPVerify(BaseModel):
     otp_type: str
 
 
+class CompleteRegistrationRequest(BaseModel):
+    """Request to complete registration with OTP verification"""
+    email: EmailStr
+    otp_code: str
+    password: str
+    name: str
+    role: str
+    avatar_url: Optional[str] = None
+    phone: Optional[str] = None
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

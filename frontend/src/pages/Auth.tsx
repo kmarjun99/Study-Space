@@ -118,10 +118,10 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
     try {
       let data;
       if (isRegister) {
-        // NEW FLOW: Initiate registration with OTP (user NOT created yet)
-        const response = await authService.initiateRegistration(email, password, role, name);
+        // Register now sends OTP automatically and returns OTP response
+        await authService.register(email, password, role, name);
 
-        // OTP is sent immediately in the response
+        // Show OTP verification modal
         setShowOtpModal(true);
         setOtpType('registration');
         setOtpSent(true);
@@ -223,9 +223,8 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
         setShowOtpModal(false);
         setShowResetPassword(true);
       } else {
-        // NEW FLOW: Verify OTP and complete registration (creates user in DB)
-        const data = await authService.verifyAndRegister(email, otpCode);
-        
+        // Complete registration: verify OTP and create user
+        const data = await authService.completeRegistration(email, otpCode, password, name, role);
         if (data && data.access_token) {
           localStorage.setItem('studySpace_token', data.access_token);
 
@@ -262,8 +261,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
     try {
       const emailToUse = otpType === 'password_reset' ? forgotPasswordEmail : email;
 
-      // For registration, use sendOtp endpoint (not initiateRegistration again)
-      await authService.sendOtp(emailToUse, null, otpType);
+      await authService.resendOtp(emailToUse, null, otpType);
       setOtpSent(true);
     } catch (err: any) {
       setOtpError('Failed to resend OTP. Please try again.');
