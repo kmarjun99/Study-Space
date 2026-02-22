@@ -127,7 +127,8 @@ class InputValidationMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable):
         # Skip validation for certain paths
-        if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi") or request.url.path.startswith("/auth/delete-test-user/"):
+        skip_paths = ["/docs", "/openapi", "/auth/delete-test-user"]
+        if any(request.url.path.startswith(path) for path in skip_paths):
             return await call_next(request)
         
         # Check query parameters
