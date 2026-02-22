@@ -120,7 +120,7 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
         const fetchActiveStudents = async () => {
             if (!roomId) return;
             try {
-                const response = await fetch(`${import.meta.env.VITE_API_URL}/reading-rooms/${roomId}/active-students`);
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/reading-rooms/${roomId}/active-students`);
                 if (response.ok) {
                     const data = await response.json();
                     setActiveStudents(data.active_students || 0);
@@ -208,7 +208,7 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
                     // Refresh active students count after booking
                     if (roomId) {
                         try {
-                            const response = await fetch(`${import.meta.env.VITE_API_URL}/reading-rooms/${roomId}/active-students`);
+                            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/reading-rooms/${roomId}/active-students`);
                             if (response.ok) {
                                 const data = await response.json();
                                 setActiveStudents(data.active_students || 0);
