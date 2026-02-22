@@ -113,19 +113,24 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
     }, [state.reviews, roomId]);
 
     // Calculate active students (unique users with active bookings at this venue)
-    const activeStudents = useMemo(() => {
-        if (!roomId || !state.bookings) return 0;
-        const now = new Date();
-        const activeBookings = state.bookings.filter(booking => {
-            const cabin = state.cabins.find(c => c.id === booking.cabinId);
-            return cabin && 
-                   cabin.readingRoomId === roomId && 
-                   new Date(booking.endDate) >= now;
-        });
-        // Count unique users
-        const uniqueUsers = new Set(activeBookings.map(b => b.userId));
-        return uniqueUsers.size;
-    }, [roomId, state.bookings, state.cabins]);
+    // Fetch from API instead of calculating from local state (which only has user's own bookings)
+    const [activeStudents, setActiveStudents] = useState(0);
+    
+    useEffect(() => {
+        const fetchActiveStudents = async () => {
+            if (!roomId) return;
+            try {
+                const response = await fetch(`${import.meta.env.VITE_API_URL}/reading-rooms/${roomId}/active-students`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setActiveStudents(data.active_students || 0);
+                }
+            } catch (error) {
+                console.error('Failed to fetch active students:', error);
+            }
+        };
+        fetchActiveStudents();
+    }, [roomId]);
 
     // Calculate months on platform
     const monthsOnPlatform = useMemo(() => {
@@ -200,6 +205,18 @@ export const ReadingRoomDetail: React.FC<ReadingRoomDetailProps> = ({
                 try {
                     await onBookCabin(selectedCabin.id, duration);
                     setPaymentStep('success');
+                    // Refresh active students count after booking
+                    if (roomId) {
+                        try {
+                            const response = await fetch(`${import.meta.env.VITE_API_URL}/reading-rooms/${roomId}/active-students`);
+                            if (response.ok) {
+                                const data = await response.json();
+                                setActiveStudents(data.active_students || 0);
+                            }
+                        } catch (error) {
+                            console.error('Failed to refresh active students:', error);
+                        }
+                    }
                 } catch (e) {
                     console.error(e);
                     setPaymentStep('details');

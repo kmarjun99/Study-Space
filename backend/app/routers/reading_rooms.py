@@ -266,6 +266,44 @@ async def get_reading_room(
 
     return room
 
+@router.get("/{room_id}/active-students")
+async def get_active_students_count(
+    room_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get count of unique active students (users with active bookings) at this venue.
+    Public endpoint - no authentication required.
+    """
+    from datetime import datetime
+    from sqlalchemy import func, distinct
+    
+    # Get all cabins for this venue
+    cabins_result = await db.execute(
+        select(Cabin.id).where(Cabin.reading_room_id == room_id)
+    )
+    cabin_ids = [row[0] for row in cabins_result.fetchall()]
+    
+    if not cabin_ids:
+        return {"venue_id": room_id, "active_students": 0}
+    
+    # Count unique users with ACTIVE bookings that haven't expired
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(func.count(distinct(Booking.user_id)))
+        .where(
+            Booking.cabin_id.in_(cabin_ids),
+            Booking.status == 'ACTIVE',
+            Booking.end_date >= now
+        )
+    )
+    active_count = result.scalar() or 0
+    
+    return {
+        "venue_id": room_id,
+        "active_students": active_count
+    }
+
 @router.put("/{room_id}", response_model=ReadingRoomResponse)
 async def update_reading_room(
     room_id: str,

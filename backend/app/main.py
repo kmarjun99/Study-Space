@@ -117,47 +117,8 @@ app.include_router(cache.router)  # Cache Management (Super Admin)
 # Database Tables Creation (For simple setup)
 @app.on_event("startup")
 async def startup():
-    from sqlalchemy import text
-    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        
-        # Create pending_registrations table if it doesn't exist
-        # This is needed for the OTP-first registration flow
-        try:
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS pending_registrations (
-                    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                    email VARCHAR NOT NULL UNIQUE,
-                    hashed_password VARCHAR NOT NULL,
-                    name VARCHAR NOT NULL,
-                    role VARCHAR NOT NULL,
-                    phone VARCHAR,
-                    avatar_url VARCHAR,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
-                );
-            """))
-            
-            await conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_pending_registrations_email 
-                ON pending_registrations(email);
-            """))
-            
-            print("✅ pending_registrations table verified/created")
-        except Exception as e:
-            print(f"⚠️  Could not create pending_registrations table: {e}")
-        
-        # Clean up expired pending registrations
-        try:
-            result = await conn.execute(text("""
-                DELETE FROM pending_registrations WHERE expires_at < NOW()
-            """))
-            deleted_count = result.rowcount
-            if deleted_count > 0:
-                print(f"🧹 Cleaned up {deleted_count} expired pending registrations")
-        except Exception as e:
-            print(f"⚠️  Could not clean up expired registrations: {e}")
     
     # Auto-create admin user if it doesn't exist
     from app.database import AsyncSessionLocal
