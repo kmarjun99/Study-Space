@@ -253,11 +253,13 @@ export const AdminAccommodation: React.FC<AdminAccommodationProps> = ({ state, o
     };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => setImages(prev => [...prev, reader.result as string]);
-            reader.readAsDataURL(file);
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onloadend = () => setImages(prev => [...prev, reader.result as string]);
+                reader.readAsDataURL(file);
+            });
         }
     };
 
@@ -615,7 +617,7 @@ export const AdminAccommodation: React.FC<AdminAccommodationProps> = ({ state, o
                                 ))}
                                 <div className="relative border-2 border-dashed h-24 flex items-center justify-center rounded cursor-pointer hover:bg-gray-50">
                                     <Upload className="text-gray-400" />
-                                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0" onChange={handleImageUpload} />
+                                    <input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
                                 </div>
                             </div>
                             <div className="flex justify-between pt-4">
