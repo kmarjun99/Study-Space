@@ -284,22 +284,48 @@ async def delete_test_user(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Emergency endpoint to delete test users
+    Emergency endpoint to delete test users with cascade delete
     Use secret=cleanup123 to access
     """
     if request.secret != "cleanup123":
         raise HTTPException(status_code=403, detail="Invalid secret")
     
-    # Delete from users table
+    from sqlalchemy import text
+    
+    # Delete from users table with CASCADE
     result = await db.execute(select(User).where(User.email == request.email))
     user = result.scalars().first()
     
     if user:
-        await db.delete(user)
-        await db.commit()
-        return {"success": True, "message": f"Deleted user: {request.email}"}
+        try:
+            # Helper function to safely delete related data
+            async def safe_delete(query: str, params: dict):
+                try:
+                    await db.execute(text(query), params)
+                except Exception:
+                    pass  # Table might not exist or no data
+            
+            # Clear foreign key references and delete related data
+            await safe_delete("UPDATE cabins SET current_occupant_id = NULL WHERE current_occupant_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM bookings WHERE user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM inquiries WHERE user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM reviews WHERE user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM trust_flags WHERE reported_by = :user_id OR flagged_user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM waitlist WHERE user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM favorites WHERE user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM messages WHERE sender_id = :user_id OR receiver_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM notifications WHERE user_id = :user_id", {"user_id": str(user.id)})
+            await safe_delete("DELETE FROM reading_rooms WHERE owner_id = :user_id", {"user_id": str(user.id)})
+            
+            # Now delete the user
+            await db.delete(user)
+            await db.commit()
+            return {"success": True, "message": f"Deleted user and all related data: {request.email}"}
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
     
-    # Also delete from pending_registrations
+    # Also check pending_registrations
     result = await db.execute(select(PendingRegistration).where(PendingRegistration.email == request.email))
     pending = result.scalars().first()
     
