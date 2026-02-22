@@ -130,6 +130,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ state }) => {
     const totalProperties = myAccommodations.length;
     const pgCount = myAccommodations.filter(a => a.type === 'PG').length;
     const hostelCount = myAccommodations.filter(a => a.type === 'HOSTEL').length;
+    const houseCount = myAccommodations.filter(a => a.type === 'HOUSE').length;
     // Mock capacity calc based on sharing type for demo
     const estimatedCapacity = myAccommodations.reduce((acc, curr) => {
         const sharingMap: Record<string, number> = { 'Single': 1, 'Double': 2, 'Triple': 3, 'Four': 4 };
@@ -473,7 +474,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ state }) => {
                             <Card className="p-5 border-l-4 border-purple-500 shadow-sm flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-medium text-gray-500">Listing Types</p>
-                                    <p className="text-sm font-bold text-gray-900 mt-1">{pgCount} PGs • {hostelCount} Hostels</p>
+                                    <p className="text-sm font-bold text-gray-900 mt-1">{pgCount} PGs • {hostelCount} Hostels • {houseCount} Houses</p>
                                 </div>
                                 <div className="p-3 bg-purple-50 rounded-lg text-purple-500">
                                     <Building2 className="w-6 h-6" />
@@ -501,7 +502,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ state }) => {
                                             <div className="h-40 relative">
                                                 <img src={acc.imageUrl} alt={acc.name} className="w-full h-full object-cover" />
                                                 <div className="absolute top-2 right-2">
-                                                    <Badge variant={acc.type === 'PG' ? 'info' : 'warning'}>{acc.type}</Badge>
+                                                    <Badge variant={acc.type === 'PG' ? 'info' : acc.type === 'HOSTEL' ? 'warning' : 'success'}>{acc.type}</Badge>
                                                 </div>
                                             </div>
                                             <div className="p-4 flex-1 flex flex-col">

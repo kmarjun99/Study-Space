@@ -11,6 +11,7 @@ class Gender(str, enum.Enum):
 class AccommodationType(str, enum.Enum):
     PG = "PG"
     HOSTEL = "HOSTEL"
+    HOUSE = "HOUSE"
 
 
 from app.models.reading_room import ListingStatus

@@ -50,7 +50,7 @@ export const FindAccommodation: React.FC<FindAccommodationProps> = ({ state }) =
     const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(cityPreference);
     const [priceRange, setPriceRange] = useState<number>(20000);
     const [genderFilter, setGenderFilter] = useState<Gender | 'ALL'>('ALL');
-    const [typeFilter, setTypeFilter] = useState<'ALL' | 'PG' | 'HOSTEL'>('ALL');
+    const [typeFilter, setTypeFilter] = useState<'ALL' | 'PG' | 'HOSTEL' | 'HOUSE'>('ALL');
 
     // Sync with city preference on mount
     useEffect(() => {
@@ -178,11 +178,12 @@ export const FindAccommodation: React.FC<FindAccommodationProps> = ({ state }) =
                         <select
                             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
                             value={typeFilter}
-                            onChange={(e) => setTypeFilter(e.target.value as 'ALL' | 'PG' | 'HOSTEL')}
+                            onChange={(e) => setTypeFilter(e.target.value as 'ALL' | 'PG' | 'HOSTEL' | 'HOUSE')}
                         >
                             <option value="ALL">All Types</option>
                             <option value="PG">PG</option>
                             <option value="HOSTEL">Hostel</option>
+                            <option value="HOUSE">House</option>
                         </select>
                     </div>
                 </div>
@@ -233,7 +234,7 @@ export const FindAccommodation: React.FC<FindAccommodationProps> = ({ state }) =
                                     />
                                 </div>
                                 <div className="absolute top-2 left-2">
-                                    <Badge variant={acc.type === 'PG' ? 'info' : 'warning'}>{acc.type}</Badge>
+                                    <Badge variant={acc.type === 'PG' ? 'info' : acc.type === 'HOSTEL' ? 'warning' : 'success'}>{acc.type}</Badge>
                                 </div>
                             </div>
 

@@ -341,7 +341,7 @@ export const AdminAccommodation: React.FC<AdminAccommodationProps> = ({ state, o
                             <div className="relative h-48 overflow-hidden bg-gray-100">
                                 <img src={acc.imageUrl || images[0]} alt={acc.name} className="w-full h-full object-cover" />
                                 <div className="absolute top-2 right-2 flex gap-1">
-                                    <Badge variant={acc.type === 'PG' ? 'info' : 'warning'}>{acc.type}</Badge>
+                                    <Badge variant={acc.type === 'PG' ? 'info' : acc.type === 'HOSTEL' ? 'warning' : 'success'}>{acc.type}</Badge>
                                 </div>
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button variant="secondary" size="sm" onClick={() => handleOpenEdit(acc)} className="mr-2">
@@ -495,7 +495,9 @@ export const AdminAccommodation: React.FC<AdminAccommodationProps> = ({ state, o
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Type *</label>
                                     <select className="w-full border rounded p-2" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value as any })}>
-                                        <option value="PG">PG</option><option value="HOSTEL">Hostel</option>
+                                        <option value="PG">PG</option>
+                                        <option value="HOSTEL">Hostel</option>
+                                        <option value="HOUSE">House</option>
                                     </select>
                                 </div>
                                 <div>

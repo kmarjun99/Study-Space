@@ -111,7 +111,7 @@ export interface Accommodation {
   id: string;
   ownerId: string; // Linked to admin
   name: string;
-  type: 'PG' | 'HOSTEL';
+  type: 'PG' | 'HOSTEL' | 'HOUSE';
   gender: Gender;
   address: string; // Acts as location
   city?: string;
