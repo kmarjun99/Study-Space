@@ -277,6 +277,7 @@ async def get_active_students_count(
     """
     from datetime import datetime
     from sqlalchemy import func, distinct
+    from app.models.booking import BookingStatus
     
     # Get all cabins for this venue
     cabins_result = await db.execute(
@@ -285,19 +286,35 @@ async def get_active_students_count(
     cabin_ids = [row[0] for row in cabins_result.fetchall()]
     
     if not cabin_ids:
+        print(f"No cabins found for venue {room_id}")
         return {"venue_id": room_id, "active_students": 0}
+    
+    print(f"Found {len(cabin_ids)} cabins for venue {room_id}")
     
     # Count unique users with ACTIVE bookings that haven't expired
     now = datetime.utcnow()
+    
+    # Debug: Check all bookings for these cabins
+    debug_result = await db.execute(
+        select(Booking)
+        .where(Booking.cabin_id.in_(cabin_ids))
+    )
+    all_bookings = debug_result.scalars().all()
+    print(f"Total bookings for venue: {len(all_bookings)}")
+    for b in all_bookings:
+        print(f"  Booking {b.id}: status={b.status} (type: {type(b.status)}), end_date={b.end_date}, now={now}, expired={b.end_date < now}")
+    
     result = await db.execute(
         select(func.count(distinct(Booking.user_id)))
         .where(
             Booking.cabin_id.in_(cabin_ids),
-            Booking.status == 'ACTIVE',
+            Booking.status == BookingStatus.ACTIVE,  # Use enum value, not string
             Booking.end_date >= now
         )
     )
     active_count = result.scalar() or 0
+    
+    print(f"Active students count: {active_count}")
     
     return {
         "venue_id": room_id,
