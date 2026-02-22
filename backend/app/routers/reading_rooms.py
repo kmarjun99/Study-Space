@@ -275,7 +275,7 @@ async def get_active_students_count(
     Get count of unique active students (users with active bookings) at this venue.
     Public endpoint - no authentication required.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from sqlalchemy import func, distinct
     from app.models.booking import BookingStatus
     
@@ -286,13 +286,14 @@ async def get_active_students_count(
     cabin_ids = [row[0] for row in cabins_result.fetchall()]
     
     if not cabin_ids:
-        print(f"No cabins found for venue {room_id}")
+        print(f"⚠️ No cabins found for venue {room_id}")
         return {"venue_id": room_id, "active_students": 0}
     
-    print(f"Found {len(cabin_ids)} cabins for venue {room_id}")
+    print(f"✅ Found {len(cabin_ids)} cabins for venue {room_id}")
     
     # Count unique users with ACTIVE bookings that haven't expired
-    now = datetime.utcnow()
+    # Use timezone-aware datetime for comparison
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # Make it naive for DB comparison
     
     # Debug: Check all bookings for these cabins
     debug_result = await db.execute(
@@ -300,21 +301,23 @@ async def get_active_students_count(
         .where(Booking.cabin_id.in_(cabin_ids))
     )
     all_bookings = debug_result.scalars().all()
-    print(f"Total bookings for venue: {len(all_bookings)}")
+    print(f"📊 Total bookings for venue: {len(all_bookings)}")
     for b in all_bookings:
-        print(f"  Booking {b.id}: status={b.status} (type: {type(b.status)}), end_date={b.end_date}, now={now}, expired={b.end_date < now}")
+        status_str = str(b.status) if hasattr(b.status, 'value') else b.status
+        print(f"  📋 Booking {b.id[:8]}...: status={status_str}, user={b.user_id[:8]}..., end_date={b.end_date}, now={now}, active={b.end_date >= now if b.end_date else False}")
     
+    # Try both enum and string comparison to handle different storage formats
     result = await db.execute(
         select(func.count(distinct(Booking.user_id)))
         .where(
             Booking.cabin_id.in_(cabin_ids),
-            Booking.status == BookingStatus.ACTIVE,  # Use enum value, not string
+            Booking.status == BookingStatus.ACTIVE.value,  # Compare as string value
             Booking.end_date >= now
         )
     )
     active_count = result.scalar() or 0
     
-    print(f"Active students count: {active_count}")
+    print(f"✨ Active students count: {active_count}")
     
     return {
         "venue_id": room_id,
