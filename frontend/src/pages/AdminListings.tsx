@@ -211,7 +211,7 @@ export const AdminListings: React.FC = () => {
                         className="bg-purple-600 hover:bg-purple-700"
                     >
                         <Plus className="w-4 h-4 mr-2" />
-                        Add PG / Hostel
+                        Add Property
                     </Button>
                 </div>
             </div>
@@ -228,7 +228,7 @@ export const AdminListings: React.FC = () => {
                 </Card>
                 <Card className="p-4 text-center">
                     <div className="text-2xl font-bold text-purple-600">{accommodations.length}</div>
-                    <div className="text-xs text-gray-500">PG / Hostels</div>
+                    <div className="text-xs text-gray-500">Properties</div>
                 </Card>
                 <Card className="p-4 text-center">
                     <div className="text-2xl font-bold text-green-600">
@@ -244,14 +244,14 @@ export const AdminListings: React.FC = () => {
                     <Building2 className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">No Listings Yet</h3>
                     <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                        Start by adding your first Reading Room or PG/Hostel. Each listing can be verified and managed independently.
+                        Start by adding your first Reading Room or Property. Each listing can be verified and managed independently.
                     </p>
                     <div className="flex justify-center gap-4">
                         <Button variant="outline" onClick={() => navigate('/admin/venue/new')}>
                             <Building2 className="w-4 h-4 mr-2" /> Add Reading Room
                         </Button>
                         <Button onClick={() => navigate('/admin/accommodation/new')}>
-                            <Home className="w-4 h-4 mr-2" /> Add PG / Hostel
+                            <Home className="w-4 h-4 mr-2" /> Add Property
                         </Button>
                     </div>
                 </Card>
