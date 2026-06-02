@@ -1,0 +1,56 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<article>
+    <h1>{{ page.h1 }}</h1>
+    <p class="lede">{{ page.tldr }}</p>
+
+    {% if listings and listings|length > 0 %}
+    <h2>Available listings</h2>
+    <p>{{ listings|length }} verified listing{{ "s" if listings|length != 1 else "" }}{% if place_label %} in {{ place_label }}{% endif %}.</p>
+    <ul>
+        {% for l in listings[:25] %}
+        <li>
+            {% if l.slug %}
+                <a href="/listing/{{ page.category }}/{{ l.slug }}"><strong>{{ l.name }}</strong></a>
+            {% else %}
+                <strong>{{ l.name }}</strong>
+            {% endif %}
+            {% if l.locality or l.city %}
+                <span style="color:#6b7280;"> — {{ [l.locality, l.city] | select | join(', ') }}</span>
+            {% endif %}
+            {% if l.price_start %}
+                <span style="color:#374151;"> · from ₹{{ "{:,}".format(l.price_start | int) }}/month</span>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="callout">
+        <strong>No listings yet matching this filter.</strong>
+        <p style="margin-top:8px;">Browse all <a href="{{ canonical_parent }}">{{ category_label }} {% if place_label %}in {{ place_label }}{% endif %}</a> or list yours to be among the first.</p>
+    </div>
+    {% endif %}
+
+    <h2>What to look for</h2>
+    <p>When booking a {{ intent_phrase }}, confirm the following before paying:</p>
+    <ul>
+        <li>Verify owner identity and address through mySpace</li>
+        <li>Test Wi-Fi, AC, and locker keys during your visit</li>
+        <li>Read recent reviews from current residents</li>
+        <li>Confirm move-out notice period and deposit terms in writing</li>
+    </ul>
+
+    {% if faqs %}
+    <h2>FAQs</h2>
+    <div class="faq">
+        {% for f in faqs %}
+        <details>
+            <summary>{{ f.question }}</summary>
+            <p>{{ f.answer | safe }}</p>
+        </details>
+        {% endfor %}
+    </div>
+    {% endif %}
+</article>
+{% endblock %}

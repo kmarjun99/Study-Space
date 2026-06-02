@@ -1,0 +1,145 @@
+# Cloud Build CI/CD Pipeline for Study Space
+#
+# Substitutions you must set in the Cloud Build trigger UI (or pass via --substitutions):
+#   _REGION          : GCP region, e.g. asia-south1
+#   _REPO            : Artifact Registry repo name, e.g. study-space
+#   _BACKEND_SERVICE : Cloud Run backend service name, e.g. study-space-backend
+#   _FRONTEND_SERVICE: Cloud Run frontend service name, e.g. study-space-frontend
+#   _VITE_API_URL    : Full backend Cloud Run URL, e.g. https://study-space-backend-xxxx-em.a.run.app
+#   _MAPS_KEY        : Google Maps API key (store in Secret Manager and reference below)
+#   _GEMINI_KEY      : Gemini API key  (store in Secret Manager and reference below)
+#   _CLOUDSQL_INSTANCE: Cloud SQL connection name, e.g. project:region:instance
+
+substitutions:
+  _REGION: asia-south1
+  _REPO: study-space
+  _BACKEND_SERVICE: study-space-backend
+  _FRONTEND_SERVICE: study-space-frontend
+  _VITE_API_URL: ""       # set in trigger
+  _MAPS_KEY: ""           # set in trigger
+  _GEMINI_KEY: ""         # set in trigger
+  _CLOUDSQL_INSTANCE: ""  # set in trigger
+
+steps:
+  # ─────────────────────────────────────────────
+  # 1. Build backend Docker image
+  # ─────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: build-backend
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:$COMMIT_SHA"
+      - -t
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:latest"
+      # Bake commit SHA + build ID into the image so /health can surface
+      # what's actually running. Operators no longer have to grep build
+      # logs to confirm a deploy landed — `curl /health` shows the SHA.
+      - --build-arg
+      - "BUILD_SHA=$COMMIT_SHA"
+      - --build-arg
+      - "BUILD_TIME=$BUILD_ID"
+      - -f
+      - backend/Dockerfile
+      - backend/
+    waitFor: ["-"]
+
+  # ─────────────────────────────────────────────
+  # 2. Build frontend Docker image (inject env vars at build time)
+  # ─────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: build-frontend
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/frontend:$COMMIT_SHA"
+      - -t
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/frontend:latest"
+      - --build-arg
+      - "VITE_API_BASE_URL=${_VITE_API_URL}"
+      - --build-arg
+      - "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_KEY}"
+      - --build-arg
+      - "GEMINI_API_KEY=${_GEMINI_KEY}"
+      - -f
+      - frontend/Dockerfile
+      - frontend/
+    waitFor: ["-"]
+
+  # ─────────────────────────────────────────────
+  # 3. Push both images to Artifact Registry
+  # ─────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: push-backend
+    args:
+      - push
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend"
+    waitFor: ["build-backend"]
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: push-frontend
+    args:
+      - push
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/frontend"
+    waitFor: ["build-frontend"]
+
+  # ─────────────────────────────────────────────
+  # 4. Deploy backend to Cloud Run
+  # ─────────────────────────────────────────────
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    id: deploy-backend
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_BACKEND_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8000
+      - --memory=512Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=10
+      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,SECRET_KEY=SECRET_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,RAZORPAY_KEY_ID=RAZORPAY_KEY_ID:latest,RAZORPAY_KEY_SECRET=RAZORPAY_KEY_SECRET:latest,mail_username=MAIL_USERNAME:latest,mail_password=MAIL_PASSWORD:latest
+      - --set-env-vars=ENVIRONMENT=production,ALGORITHM=HS256,PAYMENT_DEMO_MODE=false,CORS_ORIGINS=${_VITE_API_URL}
+    waitFor: ["push-backend"]
+
+  # ─────────────────────────────────────────────
+  # 5. Deploy frontend to Cloud Run
+  # ─────────────────────────────────────────────
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    id: deploy-frontend
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_FRONTEND_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/frontend:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      # nginx listens on $PORT (set via Dockerfile ENV PORT=8080). 8080 is
+      # Cloud Run's default and unprivileged — no CAP_NET_BIND_SERVICE
+      # required. Previous --port=80 worked intermittently but sometimes
+      # failed startup with "container failed to start and listen on the
+      # port" because binding privileged ports needs root + capability.
+      - --port=8080
+      - --memory=256Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=5
+    waitFor: ["push-frontend"]
+
+images:
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:$COMMIT_SHA"
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/frontend:$COMMIT_SHA"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

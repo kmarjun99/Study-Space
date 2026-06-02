@@ -1,0 +1,135 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<article>
+    <div style="font-size:13px;color:#059669;margin-bottom:8px;">
+        ✓ Verified by mySpace
+    </div>
+    <h1>{{ listing.name }}</h1>
+    {% if place_label %}<p class="lede" style="font-size:16px;color:#6b7280;">{{ place_label }}</p>{% endif %}
+
+    {# Hero image — <picture> with AVIF → WebP → JPEG fallbacks and a width-
+       descriptor srcset. The browser picks the format it can decode and the
+       size that fits its layout slot. fetchpriority=high tells modern browsers
+       this is the LCP element. #}
+    {% if hero_image %}
+    <div style="margin:24px 0;border-radius:12px;overflow:hidden;background:#f3f4f6;">
+        <picture>
+            <source type="image/avif"
+                    srcset="{{ hero_image | img_srcset(widths=PRESET_HERO, fmt='avif') }}"
+                    sizes="(min-width: 1024px) 768px, 100vw">
+            <source type="image/webp"
+                    srcset="{{ hero_image | img_srcset(widths=PRESET_HERO, fmt='webp') }}"
+                    sizes="(min-width: 1024px) 768px, 100vw">
+            <img src="{{ hero_image | img_url(w=1200, fmt='jpg') }}"
+                 srcset="{{ hero_image | img_srcset(widths=PRESET_HERO, fmt='jpg') }}"
+                 sizes="(min-width: 1024px) 768px, 100vw"
+                 alt="{{ listing.name }}"
+                 width="1200" height="900"
+                 style="width:100%;height:auto;display:block;"
+                 loading="eager" fetchpriority="high" decoding="async">
+        </picture>
+    </div>
+    {% endif %}
+
+    {# Gallery thumbnails — lazy-loaded, smaller srcset, layout reserves space
+       so we don't introduce CLS. #}
+    {% if other_images %}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0;">
+        {% for img in other_images %}
+        <picture>
+            <source type="image/avif"
+                    srcset="{{ img | img_srcset(widths=PRESET_THUMB, fmt='avif') }}"
+                    sizes="(min-width: 720px) 25vw, 25vw">
+            <source type="image/webp"
+                    srcset="{{ img | img_srcset(widths=PRESET_THUMB, fmt='webp') }}"
+                    sizes="(min-width: 720px) 25vw, 25vw">
+            <img src="{{ img | img_url(w=480, fmt='jpg') }}"
+                 srcset="{{ img | img_srcset(widths=PRESET_THUMB, fmt='jpg') }}"
+                 sizes="(min-width: 720px) 25vw, 25vw"
+                 alt="{{ listing.name }} photo"
+                 width="240" height="240"
+                 loading="lazy" decoding="async"
+                 style="width:100%;height:120px;object-fit:cover;border-radius:8px;background:#f3f4f6;">
+        </picture>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:32px;margin-top:16px;">
+        <div>
+            {% if listing.description %}
+            <h2>About this {{ category_singular | lower }}</h2>
+            <p style="white-space:pre-line;">{{ listing.description }}</p>
+            {% endif %}
+
+            {% if amenities %}
+            <h2>Amenities</h2>
+            <ul>
+                {% for a in amenities %}
+                <li>{{ a }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if listing.address %}
+            <h2>Location</h2>
+            <p>{{ listing.address }}</p>
+            {% if listing.lat and listing.lng %}
+            <p>
+                <a href="https://www.google.com/maps?q={{ listing.lat }},{{ listing.lng }}"
+                   target="_blank" rel="noopener noreferrer">
+                    Open in Google Maps ↗
+                </a>
+            </p>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        <aside style="border:1px solid #e5e7eb;border-radius:12px;padding:20px;background:#fff;">
+            {% if listing.price_start %}
+                <div style="font-size:24px;font-weight:700;color:#111827;">
+                    ₹{{ "{:,}".format(listing.price_start | int) }}
+                    <span style="font-size:13px;font-weight:400;color:#6b7280;">/month</span>
+                </div>
+                <div style="font-size:12px;color:#6b7280;margin-top:4px;">Starting price</div>
+            {% else %}
+                <div style="font-size:14px;color:#6b7280;">Contact owner for pricing</div>
+            {% endif %}
+            <a href="/student/reading-room/{{ listing.id }}"
+               style="display:block;background:#4f46e5;color:#fff;text-align:center;font-weight:600;padding:12px;border-radius:8px;margin-top:16px;text-decoration:none;">
+                Check availability
+            </a>
+            <a href="/login"
+               style="display:block;border:1px solid #c7d2fe;color:#4338ca;text-align:center;font-weight:500;padding:10px;border-radius:8px;margin-top:8px;text-decoration:none;">
+                Contact owner
+            </a>
+        </aside>
+    </div>
+
+    {% if similar_listings %}
+    <h2>Similar {{ category_label }}{% if place_label %} in {{ place_label }}{% endif %}</h2>
+    <ul>
+        {% for s in similar_listings %}
+        <li>
+            {% if s.slug %}<a href="/listing/{{ category }}/{{ s.slug }}"><strong>{{ s.name }}</strong></a>
+            {% else %}<strong>{{ s.name }}</strong>{% endif %}
+            {% if s.price_start %} · from ₹{{ "{:,}".format(s.price_start | int) }}/month{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if faqs %}
+    <h2>Frequently asked questions</h2>
+    <div class="faq">
+        {% for f in faqs %}
+        <details>
+            <summary>{{ f.question }}</summary>
+            <p>{{ f.answer | safe }}</p>
+        </details>
+        {% endfor %}
+    </div>
+    {% endif %}
+</article>
+{% endblock %}

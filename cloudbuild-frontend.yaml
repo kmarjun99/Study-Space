@@ -1,0 +1,48 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    id: build-frontend
+    args:
+      - build
+      - -t
+      - "asia-south1-docker.pkg.dev/$PROJECT_ID/study-space/frontend:$COMMIT_SHA"
+      - -t
+      - "asia-south1-docker.pkg.dev/$PROJECT_ID/study-space/frontend:latest"
+      - --build-arg
+      - "VITE_API_BASE_URL=${_VITE_API_URL}"
+      - --build-arg
+      - "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_KEY}"
+      - --build-arg
+      - "GEMINI_API_KEY=${_GEMINI_KEY}"
+      - -f
+      - frontend/Dockerfile
+      - frontend/
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: push-frontend
+    args: ["push", "--all-tags", "asia-south1-docker.pkg.dev/$PROJECT_ID/study-space/frontend"]
+    waitFor: ["build-frontend"]
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    id: deploy-frontend
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "study-space-frontend"
+      - --image=asia-south1-docker.pkg.dev/$PROJECT_ID/study-space/frontend:$COMMIT_SHA
+      - --region=asia-south1
+      - --platform=managed
+      - --allow-unauthenticated
+      # nginx now listens on $PORT (Dockerfile ENV PORT=8080). 8080 is
+      # Cloud Run's default unprivileged port — avoids the startup binding
+      # failure that previously occurred with --port=80.
+      - --port=8080
+      - --memory=256Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=5
+    waitFor: ["push-frontend"]
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1200s

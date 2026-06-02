@@ -1,0 +1,68 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<article>
+    <p class="meta">Updated {{ date_modified }} · {{ read_time }} min read</p>
+    <h1>{{ guide.title }}</h1>
+    <p class="lede">{{ guide.tldr }}</p>
+
+    {% if guide.quick_stats %}
+    <div class="callout">
+        <strong>Quick facts:</strong>
+        <ul style="margin-top:8px;margin-bottom:0;">
+            {% for stat in guide.quick_stats %}
+            <li>{{ stat }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% for section in guide.sections %}
+        <h2>{{ section.heading }}</h2>
+        {% if section.lead %}<p><strong>{{ section.lead }}</strong></p>{% endif %}
+        {% for para in section.paragraphs %}
+            <p>{{ para | safe }}</p>
+        {% endfor %}
+        {% if section.bullets %}
+            <ul>
+            {% for b in section.bullets %}
+                <li>{{ b | safe }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+        {% if section.table %}
+            <table>
+                <thead><tr>
+                {% for h in section.table.headers %}<th>{{ h }}</th>{% endfor %}
+                </tr></thead>
+                <tbody>
+                {% for row in section.table.rows %}
+                    <tr>{% for c in row %}<td>{{ c }}</td>{% endfor %}</tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    {% endfor %}
+
+    {% if guide.faqs %}
+    <h2>Frequently asked questions</h2>
+    <div class="faq">
+        {% for f in guide.faqs %}
+        <details>
+            <summary>{{ f.question }}</summary>
+            <p>{{ f.answer | safe }}</p>
+        </details>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if related %}
+    <h2>Related on mySpace</h2>
+    <ul>
+        {% for r in related %}
+        <li><a href="{{ r.url }}">{{ r.title }}</a></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</article>
+{% endblock %}

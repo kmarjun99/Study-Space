@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="{{ locale | default('en-IN') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="icon" type="image/png" href="/profile_favicon.png">
+
+    <title>{{ title }}{% if title and 'mySpace' not in title %} | mySpace{% endif %}</title>
+    <meta name="description" content="{{ description }}">
+    <meta name="robots" content="{{ robots | default('index, follow, max-image-preview:large, max-snippet:-1') }}">
+    <link rel="canonical" href="{{ canonical }}">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="{{ og_type | default('article') }}">
+    <meta property="og:site_name" content="mySpace">
+    <meta property="og:title" content="{{ title }}">
+    <meta property="og:description" content="{{ description }}">
+    <meta property="og:url" content="{{ canonical }}">
+    <meta property="og:image" content="{{ og_image | default('https://myspaceapp.in/logo_stacked.png') }}">
+    <meta property="og:locale" content="en_IN">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@myspaceapp">
+    <meta name="twitter:title" content="{{ title }}">
+    <meta name="twitter:description" content="{{ description }}">
+    <meta name="twitter:image" content="{{ og_image | default('https://myspaceapp.in/logo_stacked.png') }}">
+
+    <!-- Self-hosted Inter font from PostCSS bundle when served by frontend;
+         when served directly by FastAPI in dev, falls back to system sans. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Inline critical CSS — keeps the page renderable without external
+         resources, important for AI crawlers that may not follow stylesheet
+         links. Visual parity with the React PublicLayout is "close enough"
+         for SEO; perfect parity belongs in the prerender pipeline. -->
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #ffffff; color: #111827;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: #4338ca; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        header.site {
+            border-bottom: 1px solid #e5e7eb; background: #fff;
+            position: sticky; top: 0; z-index: 30;
+        }
+        header.site .wrap {
+            max-width: 1280px; margin: 0 auto; padding: 0 16px;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 64px;
+        }
+        header.site .logo {
+            font-weight: 700; font-size: 20px; color: #4338ca;
+            display: inline-flex; align-items: center; gap: 8px;
+        }
+        header.site .logo .mark {
+            display: inline-grid; place-items: center;
+            width: 28px; height: 28px; border-radius: 6px;
+            background: #4f46e5; color: #fff; font-size: 14px;
+        }
+        header.site nav { display: flex; gap: 24px; font-size: 14px; font-weight: 500; color: #374151; }
+        header.site nav a { color: #374151; }
+        header.site .cta { display: inline-flex; gap: 12px; align-items: center; }
+        header.site .cta .button {
+            background: #4f46e5; color: #fff; padding: 8px 16px;
+            border-radius: 8px; font-size: 14px; font-weight: 500;
+        }
+        main { max-width: 768px; margin: 0 auto; padding: 32px 16px 64px; }
+        h1 { font-size: 36px; line-height: 1.2; margin: 0 0 12px; font-weight: 700; }
+        h2 { font-size: 24px; margin: 32px 0 12px; font-weight: 700; }
+        h3 { font-size: 18px; margin: 24px 0 8px; font-weight: 600; }
+        p, ul, ol { margin: 0 0 16px; color: #374151; }
+        ul, ol { padding-left: 24px; }
+        li { margin-bottom: 6px; }
+        .lede { font-size: 18px; color: #4b5563; }
+        .meta { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+        .breadcrumbs { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
+        .breadcrumbs a { color: #6b7280; }
+        .callout {
+            background: #eef2ff; border-left: 4px solid #4f46e5;
+            padding: 16px 20px; border-radius: 4px; margin: 24px 0;
+        }
+        .callout strong { color: #312e81; }
+        table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 14px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        th { background: #f9fafb; font-weight: 600; color: #111827; }
+        .faq { margin: 24px 0; }
+        .faq details {
+            border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px;
+            background: #fff;
+        }
+        .faq summary {
+            cursor: pointer; font-weight: 600; list-style: none;
+            display: flex; justify-content: space-between;
+        }
+        .faq summary::-webkit-details-marker { display: none; }
+        .faq summary::after { content: '▾'; color: #4f46e5; }
+        .faq details[open] summary::after { transform: rotate(180deg); }
+        .faq p { margin-top: 12px; font-size: 14px; color: #4b5563; }
+        footer.site {
+            background: #f9fafb; border-top: 1px solid #e5e7eb;
+            padding: 48px 16px; margin-top: 64px;
+            font-size: 13px; color: #6b7280;
+        }
+        footer.site .wrap {
+            max-width: 1280px; margin: 0 auto;
+            display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 32px;
+        }
+        footer.site h4 { color: #111827; font-size: 13px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        footer.site ul { list-style: none; padding: 0; margin: 0; }
+        footer.site li { margin-bottom: 8px; }
+        footer.site a { color: #6b7280; }
+        footer.site .copyright {
+            max-width: 1280px; margin: 24px auto 0; padding-top: 24px;
+            border-top: 1px solid #e5e7eb; font-size: 12px;
+            display: flex; justify-content: space-between;
+        }
+        @media (max-width: 720px) {
+            header.site nav { display: none; }
+            footer.site .wrap { grid-template-columns: 1fr 1fr; }
+            main { padding: 24px 16px 48px; }
+            h1 { font-size: 28px; }
+            h2 { font-size: 20px; }
+        }
+    </style>
+
+    {# Structured-data graph — present on every server-rendered page #}
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://myspaceapp.in/#organization",
+          "name": "mySpace",
+          "alternateName": "mySpace India",
+          "url": "https://myspaceapp.in/",
+          "logo": "https://myspaceapp.in/logo_stacked.png",
+          "areaServed": { "@type": "Country", "name": "India" }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://myspaceapp.in/#website",
+          "url": "https://myspaceapp.in/",
+          "name": "mySpace",
+          "inLanguage": "en-IN",
+          "publisher": { "@id": "https://myspaceapp.in/#organization" }
+        }
+      ]
+    }
+    </script>
+
+    {# Per-page schema. Pass `extra_schema` from the route as a JSON string. #}
+    {% if extra_schema %}
+    <script type="application/ld+json">{{ extra_schema | safe }}</script>
+    {% endif %}
+</head>
+<body>
+    <header class="site">
+        <div class="wrap">
+            <a href="/" class="logo">
+                <span class="mark">M</span> mySpace
+            </a>
+            <nav>
+                <a href="/reading-rooms">Reading Rooms</a>
+                <a href="/study-cabins">Study Cabins</a>
+                <a href="/pgs">PGs</a>
+                <a href="/hostels">Hostels</a>
+                <a href="/guides">Guides</a>
+            </nav>
+            <div class="cta">
+                <a href="/login">Sign in</a>
+                <a href="/register" class="button">List your space</a>
+            </div>
+        </div>
+    </header>
+
+    {% if breadcrumbs %}
+    <div style="max-width:1280px;margin:0 auto;padding:16px 16px 0;">
+        <div class="breadcrumbs">
+            {% for crumb in breadcrumbs %}
+                <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+                {% if not loop.last %} <span> / </span> {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site">
+        <div class="wrap">
+            <div>
+                <a href="/" class="logo">
+                    <span class="mark">M</span> mySpace
+                </a>
+                <p style="margin-top:12px;max-width:280px;">
+                    India's discovery and booking platform for reading rooms, study cabins, PGs, hostels,
+                    co-working and co-learning spaces.
+                </p>
+            </div>
+            <div>
+                <h4>Categories</h4>
+                <ul>
+                    <li><a href="/reading-rooms">Reading Rooms</a></li>
+                    <li><a href="/study-cabins">Study Cabins</a></li>
+                    <li><a href="/pgs">PGs</a></li>
+                    <li><a href="/hostels">Hostels</a></li>
+                    <li><a href="/co-working-spaces">Co-working</a></li>
+                    <li><a href="/rental-houses">Rentals</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Cities</h4>
+                <ul>
+                    <li><a href="/city/kochi">Kochi</a></li>
+                    <li><a href="/city/trivandrum">Trivandrum</a></li>
+                    <li><a href="/city/bangalore">Bangalore</a></li>
+                    <li><a href="/city/chennai">Chennai</a></li>
+                    <li><a href="/city/hyderabad">Hyderabad</a></li>
+                    <li><a href="/city/mumbai">Mumbai</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Company</h4>
+                <ul>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="/press">Press</a></li>
+                    <li><a href="/careers">Careers</a></li>
+                    <li><a href="/contact">Contact</a></li>
+                    <li><a href="/trust">Trust &amp; Safety</a></li>
+                    <li><a href="/help">Help</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="copyright">
+            <div>© {{ current_year }} mySpace. All rights reserved.</div>
+            <div>
+                <a href="/privacy" style="margin-right:16px;">Privacy</a>
+                <a href="/terms">Terms</a>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

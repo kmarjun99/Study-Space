@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content { background: #fff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; }
+        .extension-box { background: #ecfdf5; border-left: 4px solid #10b981; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .extension-box h3 { margin-top: 0; color: #059669; }
+        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #d1fae5; }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { font-weight: 600; color: #6b7280; }
+        .detail-value { color: #111827; }
+        .amount { font-size: 20px; font-weight: bold; color: #10b981; }
+        .date-change { background: #fef3c7; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: center; }
+        .old-date { text-decoration: line-through; color: #991b1b; font-weight: 600; }
+        .new-date { color: #059669; font-weight: 700; font-size: 18px; }
+        .arrow { color: #6b7280; font-size: 24px; margin: 0 10px; }
+        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb; margin-top: 20px; }
+        .success-badge { display: inline-block; background: #10b981; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>✨ Booking Extended!</h1>
+        <span class="success-badge">✓ Extension Confirmed</span>
+    </div>
+    
+    <div class="content">
+        <p>Dear {{ recipient_name }},</p>
+        
+        <p>Good news! Your booking at <strong>{{ venue_name }}</strong> has been successfully extended.</p>
+        
+        <div class="date-change">
+            <p style="margin: 5px 0; color: #6b7280;">New Check-out Date</p>
+            <div style="display: flex; justify-content: center; align-items: center;">
+                <span class="old-date">{{ old_end_date }}</span>
+                <span class="arrow">→</span>
+                <span class="new-date">{{ new_end_date }}</span>
+            </div>
+            <p style="margin: 10px 0 5px 0; color: #059669; font-weight: 600;">+{{ days_extended }} days extended</p>
+        </div>
+        
+        <div class="extension-box">
+            <h3>Payment Summary</h3>
+            
+            <div class="detail-row">
+                <span class="detail-label">Extension Amount:</span>
+                <span class="amount">₹{{ extension_amount }}</span>
+            </div>
+            
+            <div class="detail-row" style="margin-top: 10px; padding-top: 10px; border-top: 2px solid #10b981;">
+                <span class="detail-label">Total Booking Amount:</span>
+                <span class="amount">₹{{ total_amount }}</span>
+            </div>
+        </div>
+        
+        <p><strong>Important Information:</strong></p>
+        <ul>
+            <li>Your new check-out date is <strong>{{ new_end_date }}</strong></li>
+            <li>The venue has been notified of your extended stay</li>
+            <li>No further action is required from your end</li>
+            <li>Save this email for your records</li>
+        </ul>
+        
+        <p>Enjoy your extended stay at {{ venue_name }}!</p>
+        
+        <p>Best regards,<br>
+        <strong>The StudySpace Team</strong></p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated email. Please do not reply to this message.</p>
+        <p>© 2026 StudySpace. All rights reserved.</p>
+    </div>
+</body>
+</html>

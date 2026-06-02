@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <meta name="theme-color" content="#4f46e5" />
+    <!-- ?v=2 cache-bust: an earlier deploy briefly served this URL as 404, and
+         Cloudflare/browsers cached the negative response for owners who hit
+         the site during that window. Bumping the query string forces a
+         fresh fetch. -->
+    <link rel="icon" type="image/png" href="/myspace_logo.png?v=3" />
+
+    <!-- Inter font from Google.
+         We deliberately use the v1 CSS API (`/css`) instead of v2 (`/css2`)
+         and pin `subset=latin`. Reason: v2 splits each weight into ~6
+         @font-face blocks per unicode-range (Latin, Latin-Ext, Cyrillic,
+         Greek, Vietnamese, etc.) and the browser preloads each subset
+         opportunistically. The mySpace UI is English-only, so 80% of those
+         preloads went unused and Chrome logged "preloaded but not used"
+         once per subset, accumulating to ~130 console warnings per session.
+         v1 + subset=latin returns ONE @font-face per weight (4 total) with
+         no unicode-range splitting → no opportunistic preloads → no
+         warnings. preconnect tags below shave ~100ms off first font paint. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&subset=latin&display=swap"
+    />
+
+    <!-- Default metadata. Per-page meta is injected at runtime via the <SEO>
+         component (react-helmet-async) and at build time by the prerender
+         pipeline. These defaults are what AI crawlers and link-preview bots
+         see for any route that hasn't been prerendered yet. -->
+    <title>mySpace — Reading Rooms, Study Cabins, PGs & Hostels Across India</title>
+    <meta name="description" content="mySpace is India's discovery and booking platform for reading rooms, study cabins, PGs, hostels, co-working and co-learning spaces. Verified listings across Kerala, Karnataka, Tamil Nadu and beyond." />
+    <meta name="application-name" content="mySpace" />
+    <meta name="author" content="mySpace" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://myspaceapp.in/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="mySpace" />
+    <meta property="og:title" content="mySpace — Reading Rooms, Study Cabins, PGs & Hostels Across India" />
+    <meta property="og:description" content="Discover and book reading rooms, study cabins, hostels, PGs, co-working and co-learning spaces across India." />
+    <meta property="og:url" content="https://myspaceapp.in/" />
+    <meta property="og:image" content="https://myspaceapp.in/myspace_logo.png?v=3" />
+    <meta property="og:locale" content="en_IN" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@myspaceapp" />
+    <meta name="twitter:title" content="mySpace — Reading Rooms, Study Cabins, PGs & Hostels" />
+    <meta name="twitter:description" content="Discover and book reading rooms, study cabins, hostels, PGs, co-working and co-learning spaces across India." />
+    <meta name="twitter:image" content="https://myspaceapp.in/myspace_logo.png?v=3" />
+
+    <!-- Razorpay checkout (preserve existing payment integration).
+         We intentionally do NOT add Subresource Integrity (SRI) here:
+         Razorpay rotates checkout.js to ship fraud-prevention and security
+         updates server-side. Pinning an SRI hash would lock us to a stale
+         (and eventually vulnerable) build. Razorpay does not publish SRI
+         hashes for this script for the same reason. Per their docs:
+         https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/ -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <!-- Tailwind is now self-hosted and JIT-compiled via PostCSS from
+         src/index.css. The old https://cdn.tailwindcss.com script was a
+         CWV regression in production and is no longer included. -->
+
+    <!-- Organization + WebSite + SearchAction. Always present. Per-page schema
+         (LocalBusiness, FAQPage, etc.) is injected via the <SEO> component. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://myspaceapp.in/#organization",
+          "name": "mySpace",
+          "alternateName": "mySpace India",
+          "url": "https://myspaceapp.in/",
+          "logo": "https://myspaceapp.in/myspace_logo.png?v=3",
+          "description": "India's discovery, comparison, and booking platform for reading rooms, study cabins, PGs, hostels, co-working and co-learning spaces.",
+          "areaServed": { "@type": "Country", "name": "India" },
+          "sameAs": []
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://myspaceapp.in/#website",
+          "url": "https://myspaceapp.in/",
+          "name": "mySpace",
+          "inLanguage": "en-IN",
+          "publisher": { "@id": "https://myspaceapp.in/#organization" },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://myspaceapp.in/search?q={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- All global styles + scrollbars + animations now live in
+         src/index.css and are bundled by Vite + PostCSS at build time. -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

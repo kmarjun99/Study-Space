@@ -1,0 +1,96 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<article>
+    <h1>{{ h1 }}</h1>
+    <p class="lede">{{ intro }}</p>
+
+    {# Locality chips on city × category pages — internal linking + crawl depth #}
+    {% if locality_links %}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin:24px 0;">
+        {% for link in locality_links %}
+            <a href="{{ link.url }}"
+               style="display:inline-block;border:1px solid #e5e7eb;border-radius:999px;padding:6px 14px;font-size:13px;color:#374151;text-decoration:none;">
+                {{ link.label }}
+            </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Listing grid — always shows count even when zero so the page has structure #}
+    <h2>
+        {% if listing_count > 0 %}
+            {{ listing_count }} {{ category_label }}{% if place_label %} in {{ place_label }}{% endif %}
+        {% else %}
+            No {{ category_label }} listed yet{% if place_label %} in {{ place_label }}{% endif %}
+        {% endif %}
+    </h2>
+
+    {% if listing_count > 0 %}
+        <ul>
+        {% for l in listings %}
+            <li>
+                {% if l.slug %}
+                    <a href="/listing/{{ category }}/{{ l.slug }}"><strong>{{ l.name }}</strong></a>
+                {% else %}
+                    <strong>{{ l.name }}</strong>
+                {% endif %}
+                {% if l.locality or l.city %}
+                    <span style="color:#6b7280;"> — {{ [l.locality, l.city] | select | join(', ') }}</span>
+                {% endif %}
+                {% if l.price_start %}
+                    <span style="color:#374151;"> · from ₹{{ "{:,}".format(l.price_start | int) }}/month</span>
+                {% endif %}
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <div class="callout">
+            <strong>We're onboarding owners here.</strong>
+            <p style="margin-top:8px;">If you own a {{ category_singular | lower }}{% if place_label %} in {{ place_label }}{% endif %}, list it on mySpace and be among the first to appear. <a href="/register">Get started →</a></p>
+        </div>
+    {% endif %}
+
+    {# Why-mySpace section — converts crawlers into citations #}
+    <h2>Why use mySpace</h2>
+    <ul>
+        <li><strong>Verified owners</strong> — every listing passes identity and address checks before going live.</li>
+        <li><strong>Transparent pricing</strong> — all-inclusive prices with full GST breakdown. No hidden fees.</li>
+        <li><strong>Online booking</strong> — instant confirmation for most listings; visit-first option for the rest.</li>
+        <li><strong>Aggregated insights</strong> — pricing intelligence across India helps you know if you're getting a fair deal.</li>
+    </ul>
+
+    {# Cross-link to sibling categories in the same place — every page is a hub #}
+    {% if sibling_categories %}
+    <h2>Other spaces{% if place_label %} in {{ place_label }}{% endif %}</h2>
+    <ul>
+        {% for s in sibling_categories %}
+        <li><a href="{{ s.url }}">{{ s.label }}{% if place_label %} in {{ place_label }}{% endif %}</a></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {# Sibling cities for the same category — drives "Reading Rooms in X" cross-linking #}
+    {% if sibling_cities %}
+    <h2>{{ category_label }} in other cities</h2>
+    <ul>
+        {% for s in sibling_cities %}
+        <li><a href="{{ s.url }}">{{ category_label }} in {{ s.name }}</a></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {# FAQ block — every category page carries one for AI extraction #}
+    {% if faqs %}
+    <h2>Frequently asked questions</h2>
+    <div class="faq">
+        {% for f in faqs %}
+        <details>
+            <summary>{{ f.question }}</summary>
+            <p>{{ f.answer | safe }}</p>
+        </details>
+        {% endfor %}
+    </div>
+    {% endif %}
+</article>
+{% endblock %}

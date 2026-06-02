@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudySpace - Run Database Migration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .instructions {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+        
+        .instructions h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+            color: #555;
+            line-height: 1.6;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        
+        .result.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+        
+        .result h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .result ul {
+            margin-left: 20px;
+            line-height: 1.6;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛠️ Database Migration</h1>
+        <p class="subtitle">Fix Ad Categories - One-Click Migration</p>
+        
+        <div class="instructions">
+            <h3>📋 What This Does:</h3>
+            <ol>
+                <li>Removes the foreign key constraint blocking ad creation</li>
+                <li>Adds 24 professional ad categories to your database</li>
+                <li>Safe to run multiple times (won't duplicate data)</li>
+            </ol>
+        </div>
+        
+        <form id="migrationForm">
+            <div class="input-group">
+                <label for="email">Super Admin Email:</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    placeholder="superadmin@studyspace.com"
+                    value="superadmin@studyspace.com"
+                    required
+                />
+            </div>
+            
+            <div class="input-group">
+                <label for="password">Password:</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    placeholder="Your password"
+                    required
+                />
+            </div>
+            
+            <button type="submit" id="migrateBtn">
+                🚀 Run Migration
+            </button>
+        </form>
+        
+        <div id="result" class="result"></div>
+    </div>
+    
+    <script>
+        const API_URL = 'https://study-space-ru65.onrender.com';
+        const form = document.getElementById('migrationForm');
+        const resultDiv = document.getElementById('result');
+        const migrateBtn = document.getElementById('migrateBtn');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            // Reset result
+            resultDiv.style.display = 'none';
+            resultDiv.className = 'result';
+            
+            // Show loading
+            migrateBtn.disabled = true;
+            migrateBtn.innerHTML = '<div class="loading"><div class="spinner"></div> Running Migration...</div>';
+            
+            try {
+                // Step 1: Login
+                const loginRes = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                if (!loginRes.ok) {
+                    throw new Error('Login failed. Check your credentials.');
+                }
+                
+                const loginData = await loginRes.json();
+                const token = loginData.access_token;
+                
+                // Step 2: Run Migration
+                const migrateRes = await fetch(`${API_URL}/admin/system/migrate-ads-categories`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await migrateRes.json();
+                
+                if (!migrateRes.ok) {
+                    throw new Error(data.detail || 'Migration failed');
+                }
+                
+                // Show success
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `
+                    <h3>✅ Migration Completed Successfully!</h3>
+                    <ul>
+                        ${data.messages.map(msg => `<li>${msg}</li>`).join('')}
+                        <li><strong>Total Categories:</strong> ${data.total_categories}</li>
+                    </ul>
+                    <p style="margin-top: 15px; font-weight: 600; color: #28a745;">
+                        🎉 You can now create ads without errors!
+                    </p>
+                `;
+                resultDiv.style.display = 'block';
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Migration Failed</h3>
+                    <p>${error.message}</p>
+                    <p style="margin-top: 10px; font-size: 12px;">
+                        Please check your credentials and try again.
+                    </p>
+                `;
+                resultDiv.style.display = 'block';
+            } finally {
+                migrateBtn.disabled = false;
+                migrateBtn.innerHTML = '🚀 Run Migration';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content { background: #fff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; }
+        .inquiry-box { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .inquiry-box h3 { margin-top: 0; color: #d97706; }
+        .question { background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 10px 0; font-size: 16px; line-height: 1.8; }
+        .student-info { background: #f0f9ff; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .info-row { padding: 5px 0; }
+        .info-label { font-weight: 600; color: #6b7280; display: inline-block; min-width: 100px; }
+        .button { display: inline-block; background: #f59e0b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 600; }
+        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb; margin-top: 20px; }
+        .urgent-badge { display: inline-block; background: #dc2626; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; margin: 10px 0; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔔 New Inquiry Received!</h1>
+        <span class="urgent-badge">⚡ Respond Soon</span>
+    </div>
+    
+    <div class="content">
+        <p>Dear {{ recipient_name }},</p>
+        
+        <p>You have received a new inquiry from a potential student for <strong>{{ venue_name }}</strong>!</p>
+        
+        <div class="student-info">
+            <h4 style="margin-top: 0; color: #1e40af;">Student Information</h4>
+            <div class="info-row">
+                <span class="info-label">Name:</span>
+                <span>{{ student_name }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Email:</span>
+                <span><a href="mailto:{{ student_email }}" style="color: #3b82f6;">{{ student_email }}</a></span>
+            </div>
+            {% if student_phone %}
+            <div class="info-row">
+                <span class="info-label">Phone:</span>
+                <span><a href="tel:{{ student_phone }}" style="color: #3b82f6;">{{ student_phone }}</a></span>
+            </div>
+            {% endif %}
+            <div class="info-row">
+                <span class="info-label">Date:</span>
+                <span>{{ inquiry_date }}</span>
+            </div>
+        </div>
+        
+        <div class="inquiry-box">
+            <h3>Their Question:</h3>
+            <div class="question">
+                "{{ question }}"
+            </div>
+        </div>
+        
+        <p><strong>Why Quick Responses Matter:</strong></p>
+        <ul>
+            <li>Students typically contact multiple venues</li>
+            <li>Fast responses increase booking chances</li>
+            <li>Good communication builds trust</li>
+            <li>Helps maintain high ratings on StudySpace</li>
+        </ul>
+        
+        <center>
+            <a href="https://studyspace.com/owner/inquiries" class="button">Respond Now</a>
+        </center>
+        
+        <p><strong>Pro Tip:</strong> Respond within 24 hours to maximize your chances of converting this inquiry into a booking!</p>
+        
+        <p>Best regards,<br>
+        <strong>The StudySpace Team</strong></p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated email. Please do not reply to this message.</p>
+        <p>© 2026 StudySpace. All rights reserved.</p>
+    </div>
+</body>
+</html>

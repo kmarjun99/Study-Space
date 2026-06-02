@@ -1,0 +1,64 @@
+/* Inter font is loaded via a single <link rel="stylesheet"> in index.html.
+   Loading it here as @import caused Google's CSS to register a preload chain
+   for every (weight × unicode-range) combination — ~30 font files preloaded
+   per session, of which a typical view consumed 3-4. Chrome flagged each
+   unused preload with "resource was preloaded but not used" — accumulating
+   to 100+ console warnings on long sessions. Moving the request into <head>
+   with `preconnect` + only the weights actually used eliminates that chain. */
+
+/* Tailwind directives — JIT-compiled by PostCSS at build time. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global resets that were inline in index.html — moved here so PostCSS can
+   tree-shake unused styles and minify them. */
+@layer base {
+  body {
+    @apply font-sans bg-gray-50;
+    /* No global overflow lock. The in-app <Layout> uses `fixed inset-0`
+       so its sticky sidebar works regardless. The PublicLayout, guides,
+       and intent pages need normal page-level scrolling. */
+  }
+}
+
+/* Scrollbars + safe-area helpers used across the app. */
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar,
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  *::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Animation utilities — used by modals/toasts that rely on the lightweight
+   animate-in class instead of pulling in a full animation library. */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes zoomIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.animate-in {
+  animation-duration: 0.2s;
+  animation-fill-mode: forwards;
+}
