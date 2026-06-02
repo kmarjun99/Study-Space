@@ -306,3 +306,65 @@ async def system_health_check(
         health["constraints"]["ads_category_fk"] = "exists" if fk_exists else "removed"
     
     return health
+
+
+@router.get("/reset-superadmin-quick")
+async def reset_superadmin_quick(
+    secret: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🚨 EMERGENCY ENDPOINT - Reset or create superadmin user
+    
+    Access via URL with secret:
+    GET /admin/system/reset-superadmin-quick?secret=YOUR_SECRET
+    
+    This endpoint:
+    1. Checks if superadmin@studyspace.com exists
+    2. If yes, resets password to superadmin123
+    3. If no, creates the superadmin user
+    
+    Use secret=superadmin123 or admin123.
+    """
+    from app.core.security import get_password_hash
+    from app.models.user import VerificationStatus
+    
+    if secret not in ["superadmin123", "admin123"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid secret."
+        )
+    
+    result = await db.execute(
+        select(User).where(User.email == "superadmin@studyspace.com")
+    )
+    user = result.scalars().first()
+    
+    if user:
+        user.hashed_password = get_password_hash("superadmin123")
+        user.role = UserRole.SUPER_ADMIN
+        await db.commit()
+        return {
+            "success": True,
+            "action": "reset",
+            "message": "✅ Superadmin password reset to 'superadmin123'",
+            "email": "superadmin@studyspace.com"
+        }
+    else:
+        new_admin = User(
+            email="superadmin@studyspace.com",
+            hashed_password=get_password_hash("superadmin123"),
+            name="Super Admin",
+            role=UserRole.SUPER_ADMIN,
+            phone="9876543210",
+            verification_status=VerificationStatus.VERIFIED
+        )
+        db.add(new_admin)
+        await db.commit()
+        return {
+            "success": True,
+            "action": "created",
+            "message": "✅ Superadmin user created with password 'superadmin123'",
+            "email": "superadmin@studyspace.com"
+        }
+

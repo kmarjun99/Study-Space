@@ -370,14 +370,14 @@ async def startup():
     try:
         async with AsyncSessionLocal() as db:
             try:
-                # Check if admin user exists
+                # Check if superadmin user exists
                 result = await db.execute(
-                    select(User).where(User.email == "admin@studyspace.com")
+                    select(User).where(User.email == "superadmin@studyspace.com")
                 )
                 admin_user = result.scalars().first()
                 
                 if not admin_user:
-                    # Create admin user
+                    # Create superadmin user
                     new_admin = User(
                         email="superadmin@studyspace.com",
                         hashed_password=get_password_hash("superadmin123"),
@@ -388,9 +388,9 @@ async def startup():
                     )
                     db.add(new_admin)
                     await db.commit()
-                    print("✅ Admin user created: superadmin@studyspace.com")
+                    print("✅ Super admin user created: superadmin@studyspace.com")
                 else:
-                    print("ℹ️  Admin user already exists")
+                    print("ℹ️  Super admin user already exists")
             except Exception as e:
                 print(f"⚠️  Could not create admin user: {e}")
     except Exception as e:
