@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Boolean, Enum, ARRAY, DateTime, Numeric, SmallInteger
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, Boolean, Enum, ARRAY, DateTime, Numeric, SmallInteger, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum
@@ -146,6 +146,13 @@ class ReadingRoom(Base):
 
 class Cabin(Base):
     __tablename__ = "cabins"
+    __table_args__ = (
+        UniqueConstraint(
+            "reading_room_id",
+            "number",
+            name="uq_cabins_reading_room_number",
+        ),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     reading_room_id = Column(String, ForeignKey("reading_rooms.id"), nullable=False)
@@ -180,4 +187,3 @@ class Cabin(Base):
     def is_held_by(self, user_id: str) -> bool:
         """Check if cabin is held by specific user"""
         return self.is_held() and self.held_by_user_id == user_id
-

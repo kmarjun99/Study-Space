@@ -6,10 +6,17 @@ from app.database import get_db
 from app.models.reading_room import ReadingRoom, Cabin, CabinStatus, ListingStatus
 from app.models.city import CitySettings
 from app.models.booking import Booking
-from app.schemas.reading_room import ReadingRoomCreate, ReadingRoomResponse, CabinCreate, ReadingRoomUpdate, DurationConfigUpdate
+from app.schemas.reading_room import (
+    ReadingRoomCreate,
+    ReadingRoomResponse,
+    CabinCreate,
+    CabinResponse,
+    ReadingRoomUpdate,
+    DurationConfigUpdate,
+)
 from app.models.user import User, UserRole
 from app.deps import get_current_user, get_current_admin, get_current_user_optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 import json
 
 router = APIRouter(prefix="/reading-rooms", tags=["reading-rooms"])
@@ -183,13 +190,33 @@ async def create_reading_room(
         raise HTTPException(status_code=500, detail=f"Failed to create reading room: {str(e)}")
 
 class CabinBatchCreate(BaseModel):
-    start_number: int
-    end_number: int
-    floor: int
-    price: Optional[float] = None  # Optional - defaults to reading room's priceStart
-    amenities: str = ""
+    cabins: List[CabinCreate] = Field(min_length=1, max_length=500)
 
-@router.post("/{room_id}/cabins/batch")
+    @field_validator("cabins")
+    @classmethod
+    def validate_cabin_numbers(cls, cabins: List[CabinCreate]):
+        normalized_numbers = [cabin.number.strip() for cabin in cabins]
+        if any(not number for number in normalized_numbers):
+            raise ValueError("Cabin number cannot be empty")
+
+        duplicate_numbers = sorted({
+            number for number in normalized_numbers
+            if normalized_numbers.count(number) > 1
+        })
+        if duplicate_numbers:
+            raise ValueError(
+                f"Duplicate cabin numbers in batch: {', '.join(duplicate_numbers)}"
+            )
+
+        for cabin, number in zip(cabins, normalized_numbers):
+            cabin.number = number
+        return cabins
+
+@router.post(
+    "/{room_id}/cabins/batch",
+    response_model=List[CabinResponse],
+    response_model_by_alias=True,
+)
 async def create_cabins_batch(
     room_id: str,
     batch: CabinBatchCreate,
@@ -206,20 +233,29 @@ async def create_cabins_batch(
     if room.owner_id != current_user.id and current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Use reading room's base price for all cabins
-    cabin_price = batch.price if batch.price and batch.price > 0 else room.price_start
+    requested_numbers = [cabin.number for cabin in batch.cabins]
+    existing_result = await db.execute(
+        select(Cabin.number).where(
+            Cabin.reading_room_id == room_id,
+            Cabin.number.in_(requested_numbers),
+        )
+    )
+    existing_numbers = sorted(set(existing_result.scalars().all()))
+    if existing_numbers:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "These cabin numbers already exist: "
+                f"{', '.join(existing_numbers)}. Choose a new range."
+            ),
+        )
 
     cabins = []
-    for num in range(batch.start_number, batch.end_number + 1):
-        cabin = Cabin(
-            reading_room_id=room_id,
-            number=str(num),
-            floor=batch.floor,
-            price=cabin_price,
-            amenities=batch.amenities,
-            status=CabinStatus.AVAILABLE
-        )
-        cabins.append(cabin)
+    for cabin_data in batch.cabins:
+        data = cabin_data.model_dump()
+        if data.get("price") is None or data.get("price") == 0:
+            data["price"] = room.price_start
+        cabins.append(Cabin(reading_room_id=room_id, **data))
     
     db.add_all(cabins)
     try:
@@ -230,12 +266,12 @@ async def create_cabins_batch(
         if "unique" in err or "duplicate" in err:
             raise HTTPException(
                 status_code=409,
-                detail=f"One or more cabin numbers in range {batch.start_number}–{batch.end_number} already exist."
+                detail="One or more cabin numbers already exist in this reading room."
             )
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    return {"message": f"{len(cabins)} cabins created successfully"}
-
-from app.schemas.reading_room import CabinResponse
+    for cabin in cabins:
+        await db.refresh(cabin)
+    return cabins
 
 @router.post("/{room_id}/cabins", response_model=CabinResponse, response_model_by_alias=True)
 async def create_cabin(
@@ -256,6 +292,22 @@ async def create_cabin(
 
     # Auto-set cabin price to reading room's base price if not provided
     cabin_data = cabin.model_dump()
+    cabin_data["number"] = cabin_data["number"].strip()
+    if not cabin_data["number"]:
+        raise HTTPException(status_code=422, detail="Cabin number cannot be empty")
+
+    existing_cabin = await db.scalar(
+        select(Cabin.id).where(
+            Cabin.reading_room_id == room_id,
+            Cabin.number == cabin_data["number"],
+        )
+    )
+    if existing_cabin:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cabin number {cabin_data['number']} already exists in this reading room.",
+        )
+
     if cabin_data.get('price') is None or cabin_data.get('price') == 0:
         cabin_data['price'] = room.price_start
     

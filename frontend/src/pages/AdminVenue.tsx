@@ -50,7 +50,7 @@ interface AdminVenueProps {
     onCreateRoom: (data: Partial<ReadingRoom>) => Promise<ReadingRoom>;
     onUpdateRoom: (data: Partial<ReadingRoom>) => void;
     onAddCabin: (data: Partial<Cabin>) => void;
-    onBulkAddCabins: (data: Partial<Cabin>[]) => void;
+    onBulkAddCabins: (data: Partial<Cabin>[]) => Promise<void>;
     onUpdateCabin: (id: string, data: Partial<Cabin>) => void;
     onBulkUpdateCabins: (ids: string[], data: Partial<Cabin>) => void;
     onBulkDeleteCabins: (ids: string[]) => void;
@@ -405,6 +405,22 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
 
     // Batch Generator State
     const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+    const [isCreatingBatch, setIsCreatingBatch] = useState(false);
+
+    const openBatchModal = () => {
+        const numericCabinNumbers = myCabins
+            .map(cabin => Number(cabin.number))
+            .filter(number => Number.isInteger(number) && number >= 0);
+        const nextNumber = numericCabinNumbers.length > 0
+            ? Math.max(...numericCabinNumbers) + 1
+            : 1;
+        setBatchConfig(prev => ({
+            ...prev,
+            startNum: nextNumber,
+            endNum: nextNumber + 19,
+        }));
+        setIsBatchModalOpen(true);
+    };
 
     // --- Boost/Feature State ---
     const [isBoostModalOpen, setIsBoostModalOpen] = useState(false);
@@ -1078,12 +1094,9 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                                 alert('Failed to update prices');
                             }
                         }}><Layers className="w-4 h-4 mr-2" /> Sync Prices</Button>
-                        <Button size="sm" variant="outline" onClick={() => {
-                            // Initialize batch config with CURRENT form data price
-                            const currentPrice = venueFormData.priceStart || venue?.priceStart || 0;
-                            setBatchConfig(prev => ({ ...prev, price: currentPrice }));
-                            setIsBatchModalOpen(true);
-                        }}><Layers className="w-4 h-4 mr-2" /> Batch</Button>
+                        <Button size="sm" variant="outline" onClick={openBatchModal}>
+                            <Layers className="w-4 h-4 mr-2" /> Batch
+                        </Button>
                         <Button size="sm" onClick={() => {
                             setEditingCabinId(null);
                             // Initialize new cabin form with CURRENT form data price
@@ -1162,11 +1175,9 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                     Cabin Management
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => {
-                        const currentPrice = venueFormData.priceStart || venue?.priceStart || 0;
-                        setBatchConfig(prev => ({ ...prev, price: currentPrice }));
-                        setIsBatchModalOpen(true);
-                    }}><Layers className="w-4 h-4 mr-1 sm:mr-2" /> Batch</Button>
+                    <Button size="sm" variant="outline" onClick={openBatchModal}>
+                        <Layers className="w-4 h-4 mr-1 sm:mr-2" /> Batch
+                    </Button>
                     <Button size="sm" variant="outline" onClick={async () => {
                         const priceToSync = venueFormData.priceStart || venue?.priceStart;
                         if (!priceToSync || myCabins.length === 0) {
@@ -1389,7 +1400,12 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                             <strong>Price:</strong> All cabins will use the venue's base price (₹{venue?.priceStart || 0}/month). Configure duration-specific prices in the Duration Settings tab.
                         </p>
                     </div>
-                    <Button onClick={() => {
+                    <Button disabled={isCreatingBatch} onClick={async () => {
+                        if (batchConfig.startNum > batchConfig.endNum) {
+                            toast.error("Start number must be less than or equal to end number.");
+                            return;
+                        }
+
                         const newCabins = [];
                         for (let i = batchConfig.startNum; i <= batchConfig.endNum; i++) {
                             newCabins.push({
@@ -1401,10 +1417,21 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                             });
                         }
                         if (venue) {
-                            onBulkAddCabins(newCabins.map(c => ({ ...c, readingRoomId: venue.id })));
+                            setIsCreatingBatch(true);
+                            try {
+                                await onBulkAddCabins(
+                                    newCabins.map(c => ({ ...c, readingRoomId: venue.id }))
+                                );
+                                setIsBatchModalOpen(false);
+                            } finally {
+                                setIsCreatingBatch(false);
+                            }
                         }
-                        setIsBatchModalOpen(false);
-                    }}>Generate {batchConfig.endNum - batchConfig.startNum + 1} Cabins</Button>
+                    }}>
+                        {isCreatingBatch
+                            ? "Creating cabins..."
+                            : `Generate ${Math.max(0, batchConfig.endNum - batchConfig.startNum + 1)} Cabins`}
+                    </Button>
                 </div>
             </Modal>
         </>

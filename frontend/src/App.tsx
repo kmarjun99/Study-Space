@@ -661,13 +661,17 @@ const App: React.FC = () => {
   };
 
   const handleBulkAddCabins = async (newCabinsData: Partial<Cabin>[]) => {
-    if (!appState.currentUser) return;
+    if (!appState.currentUser) {
+      throw new Error("You must be signed in to create cabins.");
+    }
 
     // Use readingRoomId from first cabin data if provided (multi-venue support)
     // Otherwise fallback to finding first owned room
     const roomId = newCabinsData[0]?.readingRoomId ||
       appState.readingRooms.find(r => r.ownerId === appState.currentUser?.id)?.id;
-    if (!roomId) return;
+    if (!roomId) {
+      throw new Error("No reading room was found for these cabins.");
+    }
 
     try {
       const createdCabins = await venueService.createCabinsBulk(roomId, newCabinsData);
@@ -675,9 +679,13 @@ const App: React.FC = () => {
         ...prev,
         cabins: [...prev.cabins, ...createdCabins]
       }));
+      toast.success(`${createdCabins.length} cabins created successfully.`);
     } catch (err) {
       console.error("Failed to add cabins:", err);
-      toast.error("Failed to batch create cabins. Some may have failed.");
+      const message = (err as any)?.response?.data?.detail
+        || "Failed to batch create cabins. No cabins were created.";
+      toast.error(message);
+      throw err;
     }
   };
 

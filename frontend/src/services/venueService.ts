@@ -240,9 +240,28 @@ export const venueService = {
     },
 
     createCabinsBulk: async (readingRoomId: string, cabinsData: Partial<Cabin>[]): Promise<Cabin[]> => {
-        // Run in parallel
-        const promises = cabinsData.map(data => venueService.createCabin(readingRoomId, data));
-        return Promise.all(promises);
+        const cabins = cabinsData.map(data => ({
+            number: data.number,
+            floor: data.floor,
+            price: data.price || undefined,
+            status: data.status || 'AVAILABLE',
+            amenities: data.amenities || [],
+            zone: data.zone,
+            row_label: data.rowLabel
+        }));
+        const response = await api.post(
+            `/api/reading-rooms/${readingRoomId}/cabins/batch`,
+            { cabins }
+        );
+        return response.data.map((cabin: any) => ({
+            ...cabin,
+            readingRoomId: cabin.readingRoomId || cabin.reading_room_id,
+            currentOccupantId: cabin.currentOccupantId || cabin.current_occupant_id,
+            rowLabel: cabin.rowLabel || cabin.row_label,
+            heldByUserId: cabin.heldByUserId || cabin.held_by_user_id,
+            holdExpiresAt: cabin.holdExpiresAt || cabin.hold_expires_at,
+            amenities: cabin.amenities || [],
+        }));
     },
 
 

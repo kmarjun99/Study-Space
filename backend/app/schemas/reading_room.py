@@ -7,7 +7,10 @@ from app.models.reading_room import CabinStatus, ListingStatus
 class CabinBase(BaseModel):
     number: str
     floor: int
-    amenities: Optional[Union[List[str], str]] = []
+    amenities: Optional[Union[List[str], str]] = Field(
+        default_factory=list,
+        validate_default=True,
+    )
     price: Optional[float] = None  # Optional: defaults to reading room's priceStart if not provided
     status: CabinStatus = CabinStatus.AVAILABLE
     zone: Optional[str] = None
@@ -38,7 +41,7 @@ class CabinResponse(CabinBase):
     id: str
     reading_room_id: str = Field(serialization_alias="readingRoomId")
     current_occupant_id: Optional[str] = Field(default=None, serialization_alias="currentOccupantId")
-    amenities: List[str] = [] # Override to ensure response is always List
+    amenities: List[str] = Field(default_factory=list) # Override to ensure response is always List
     price: float  # Required in response - always set to reading room's price
     zone: Optional[str] = None
     row_label: Optional[str] = Field(default=None, serialization_alias="rowLabel")
