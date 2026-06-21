@@ -35,9 +35,11 @@ FROM --platform=linux/amd64 nginx:alpine
 # left untouched). Templated config is staged at a non-conf.d path so it
 # doesn't get parsed before substitution.
 COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY docker-entrypoint-runtime.sh /usr/local/bin/docker-entrypoint-runtime.sh
 
 # Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
+RUN chmod +x /usr/local/bin/docker-entrypoint-runtime.sh
 
 # Cloud Run sets PORT at runtime; default to 8080 for local docker run.
 ENV PORT=8080
@@ -47,6 +49,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --quiet --tries=1 --spider "http://127.0.0.1:${PORT}/health" || exit 1
 
-# Substitute ${PORT} into the nginx config, then exec nginx in the foreground.
-# `envsubst '$PORT'` whitelist prevents accidental substitution of $uri etc.
-CMD sh -c "envsubst '\$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"
+# Generate browser-visible runtime config, substitute ${PORT} into nginx, then
+# exec nginx. Cloud Run's BACKEND_URL now works without rebuilding the bundle.
+CMD ["/usr/local/bin/docker-entrypoint-runtime.sh"]

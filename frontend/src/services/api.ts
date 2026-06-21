@@ -5,16 +5,16 @@ import axios from 'axios';
 
 // Resolve the backend base URL for axios.
 //
-// Three regimes:
-//   1. VITE_API_BASE_URL is set at build time → use it as-is. Used by
-//      deployments that proxy through a separate API origin.
-//   2. Running on localhost / 127.0.0.1 (dev) → talk to the local
+// Four regimes:
+//   1. BACKEND_URL/VITE_API_BASE_URL is injected into env-config.js when the
+//      production container starts → use it as-is.
+//   2. VITE_API_BASE_URL is set at build time → use it as-is.
+//   3. Running on localhost / 127.0.0.1 (dev) → talk to the local
 //      FastAPI on :8000.
-//   3. Anywhere else (production, staging, network-IP dev on mobile)
+//   4. Anywhere else (production, staging, network-IP dev on mobile)
 //      → return EMPTY STRING. axios then issues requests against the
-//      same origin, e.g. `api.get('/auth/login')` becomes
-//      https://myspaceapp.in/auth/login, which nginx/Cloud Load Balancer
-//      proxies to the backend Cloud Run service.
+//      same origin. This is only a final fallback for deployments with a
+//      same-origin API proxy.
 //
 // The previous fallback returned `http://${hostname}:8000` — for prod
 // hostname=myspaceapp.in that resolved to `http://myspaceapp.in:8000`,
@@ -25,17 +25,22 @@ import axios from 'axios';
 // problems: the browser uses the page's HTTPS scheme and the load
 // balancer routes by path.
 const getBaseUrl = (): string => {
+  const runtimeUrl =
+    typeof window !== 'undefined'
+      ? window.__MYSPACE_RUNTIME_CONFIG__?.API_BASE_URL?.trim()
+      : undefined;
+  if (runtimeUrl) return runtimeUrl.replace(/\/+$/, '');
+
   const fromEnv = import.meta.env.VITE_API_BASE_URL;
-  if (fromEnv) return fromEnv;
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://localhost:8000';
     }
-    // Production / any non-local host: use relative URLs so requests
-    // inherit the page's protocol (HTTPS) and port (443), and let the
-    // load balancer route by path.
+    // Production / any non-local host: use relative URLs only when the
+    // deployment has intentionally configured a same-origin API proxy.
     return '';
   }
 

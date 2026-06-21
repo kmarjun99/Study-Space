@@ -8,3 +8,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  __MYSPACE_RUNTIME_CONFIG__?: {
+    API_BASE_URL?: string;
+  };
+}
