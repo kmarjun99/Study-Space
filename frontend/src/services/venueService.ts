@@ -101,7 +101,6 @@ export const venueService = {
             name: data.name,
             address: data.address,
             description: data.description,
-            image_url: data.imageUrl,
             images: data.images, // Expecting JSON string already or List (Backend handles both)
             amenities: data.amenities, // Send as List
             contact_phone: data.contactPhone,
@@ -141,7 +140,6 @@ export const venueService = {
         if (updates.state !== undefined) payload.state = updates.state;
         if (updates.pincode !== undefined) payload.pincode = updates.pincode;
         if (updates.description !== undefined) payload.description = updates.description;
-        if (updates.imageUrl !== undefined) payload.image_url = updates.imageUrl;
         if (updates.images !== undefined) payload.images = updates.images;
         if (updates.contactPhone !== undefined) payload.contact_phone = updates.contactPhone;
         if (updates.priceStart !== undefined) payload.price_start = updates.priceStart;
@@ -151,7 +149,12 @@ export const venueService = {
             payload.amenities = updates.amenities; // Send as List
         }
 
-        const response = await api.put(`/api/reading-rooms/${id}`, payload);
+        // Image saves can still be a few megabytes after compression. Give the
+        // first legacy-image compaction save enough time to complete while the
+        // global API timeout remains strict for normal requests.
+        const response = await api.put(`/api/reading-rooms/${id}`, payload, {
+            timeout: 120000,
+        });
         const room = response.data;
         return {
             ...room,

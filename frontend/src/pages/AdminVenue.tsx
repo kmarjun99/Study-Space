@@ -1,8 +1,9 @@
 ﻿
-import React, { useState, useEffect, useMemo, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useMemo, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { imageUrl } from '../utils/imageUtils';
+import { compactVenueImages, compressVenueImage } from '../utils/imageCompression';
 
 import { AppState, ReadingRoom, Cabin, CabinStatus, ListingStatus, PromotionPlan, PromotionRequest } from '../types';
 import { Card, Button, Input, Badge, Modal, LiveIndicator } from '../components/UI';
@@ -172,6 +173,8 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     // --- Form State ---
     const [step, setStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
+    const [processingImages, setProcessingImages] = useState(false);
+    const saveInFlightRef = useRef(false);
     const [venueFormData, setVenueFormData] = useState<Partial<ReadingRoom>>({});
     const [images, setImages] = useState<string[]>([]);
     const [cabinFormData, setCabinFormData] = useState<Partial<Cabin>>({
@@ -307,19 +310,28 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     const canPromote = !isFlagged && !isSuspended && (trustStatus?.can_promote ?? true);
 
     const handleCreateOrUpdateVenue = async (nextStep?: number) => {
+        if (saveInFlightRef.current || processingImages) return;
+
         // Validation for Step 1
         if (!venueFormData.name || !venueFormData.address || !venueFormData.city || !venueFormData.contactPhone || !venueFormData.priceStart) {
             alert("Please complete all mandatory details.");
             return;
         }
 
-        const dataToSave = {
-            ...venueFormData,
-            images: JSON.stringify(images),
-            imageUrl: images[0] || venueFormData.imageUrl // fallback
-        };
-
+        saveInFlightRef.current = true;
+        setSubmitting(true);
         try {
+            // Existing venues may still contain the old full-resolution base64
+            // images. Compact them once during the next save as well as
+            // compressing all newly selected files at upload time.
+            const compactedImages = await compactVenueImages(images);
+            setImages(compactedImages);
+
+            const dataToSave = {
+                ...venueFormData,
+                images: JSON.stringify(compactedImages)
+            };
+
             if (!venue) {
                 const newRoom = await onCreateRoom(dataToSave) as ReadingRoom;
                 toast.success('Venue created successfully!');
@@ -339,26 +351,52 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 }
             }
         } catch (error) {
-            toast.error('Failed to save changes. Please try again.');
+            const detail = (error as any)?.response?.data?.detail;
+            const timedOut = (error as any)?.code === 'ECONNABORTED';
+            toast.error(
+                detail
+                || (timedOut
+                    ? 'The save took too long. Your images were kept—please try once more.'
+                    : 'Failed to save changes. Please try again.')
+            );
             console.error('Save error:', error);
+        } finally {
+            saveInFlightRef.current = false;
+            setSubmitting(false);
         }
     };
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (files && files.length > 0) {
-            // Process multiple files
-            Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setImages(prev => [...prev, reader.result as string]);
-                };
-                reader.readAsDataURL(file);
-            });
-            // Show success message
-            toast.success(`✅ ${files.length} image${files.length > 1 ? 's' : ''} uploaded successfully!`);
-            // Reset input
-            e.target.value = '';
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        e.target.value = '';
+        if (selectedFiles.length === 0 || processingImages) return;
+
+        const remainingSlots = 12 - images.length;
+        if (remainingSlots <= 0) {
+            toast.error('A maximum of 12 venue images is allowed.');
+            return;
+        }
+
+        const files = selectedFiles.slice(0, remainingSlots);
+        if (files.length < selectedFiles.length) {
+            toast.error('Only the first images were added because the limit is 12.');
+        }
+
+        setProcessingImages(true);
+        try {
+            const compressedImages: string[] = [];
+            for (const file of files) {
+                compressedImages.push(await compressVenueImage(file));
+            }
+            setImages(prev => [...prev, ...compressedImages]);
+            toast.success(
+                `✅ ${compressedImages.length} image${compressedImages.length > 1 ? 's' : ''} prepared successfully!`
+            );
+        } catch (error) {
+            toast.error((error as Error).message || 'One or more images could not be processed.');
+            console.error('Image processing failed:', error);
+        } finally {
+            setProcessingImages(false);
         }
     };
 
@@ -854,7 +892,11 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 </div>
                 {!isReadOnly && (
                     <div className="mt-6 flex justify-end">
-                        <Button onClick={() => handleCreateOrUpdateVenue(isLive ? undefined : 2)}>
+                        <Button
+                            onClick={() => handleCreateOrUpdateVenue(isLive ? undefined : 2)}
+                            disabled={processingImages}
+                            isLoading={submitting}
+                        >
                             {isLive ? 'Save Changes' : 'Save & Next'}
                             {!isLive && <ArrowRight className="w-4 h-4 ml-2" />}
                         </Button>
@@ -889,7 +931,14 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                         <Upload className="w-8 h-8 text-gray-400 mb-2" />
                         <span className="text-xs text-gray-500">Upload Photos</span>
                         <span className="text-xs text-gray-400 mt-1">(Multiple)</span>
-                        <input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
+                        <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            multiple
+                            disabled={processingImages || submitting || images.length >= 12}
+                            className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                            onChange={handleImageUpload}
+                        />
                     </div>
                 )}
             </div>
@@ -901,7 +950,11 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                         <span className={`text-sm ${displayImages.length >= 4 ? 'text-green-600' : 'text-red-500'}`}>
                             {displayImages.length} / 4 uploaded
                         </span>
-                        <Button onClick={() => handleCreateOrUpdateVenue(3)} disabled={displayImages.length < 4}>
+                        <Button
+                            onClick={() => handleCreateOrUpdateVenue(3)}
+                            disabled={displayImages.length < 4 || processingImages}
+                            isLoading={submitting}
+                        >
                             Save & Continue <ArrowRight className="w-4 h-4 ml-2" />
                         </Button>
                     </div>
@@ -909,7 +962,13 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
             )}
             {isLive && !isReadOnly && (
                 <div className="mt-6 flex justify-end">
-                    <Button onClick={() => handleCreateOrUpdateVenue()}>Save Images</Button>
+                    <Button
+                        onClick={() => handleCreateOrUpdateVenue()}
+                        disabled={processingImages}
+                        isLoading={submitting}
+                    >
+                        Save Images
+                    </Button>
                 </div>
             )}
         </Card>
