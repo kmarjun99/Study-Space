@@ -167,7 +167,14 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     // Defensive check for state.cabins
     const myCabins = useMemo(() => {
         if (!venue || !state || !state.cabins) return [];
-        return state.cabins.filter(c => c.readingRoomId === venue.id);
+        return state.cabins
+            .filter(c => c.readingRoomId === venue.id)
+            .sort((a, b) =>
+                String(a.number).localeCompare(String(b.number), undefined, {
+                    numeric: true,
+                    sensitivity: 'base',
+                })
+            );
     }, [venue, state]);
 
     // --- Form State ---

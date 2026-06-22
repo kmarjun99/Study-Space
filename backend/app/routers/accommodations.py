@@ -7,7 +7,12 @@ from app.database import get_db
 from app.models.accommodation import Accommodation, AccommodationType, Gender
 from app.models.reading_room import ListingStatus
 from app.models.booking import Booking
-from app.schemas.accommodation import AccommodationResponse, AccommodationCreate, AccommodationUpdate
+from app.schemas.accommodation import (
+    AccommodationResponse,
+    AccommodationCreate,
+    AccommodationUpdate,
+    AccommodationSummaryResponse,
+)
 from app.models.user import User, UserRole
 from app.deps import get_current_admin, get_current_user_optional, get_current_user
 
@@ -15,6 +20,20 @@ router = APIRouter(prefix="/accommodations", tags=["accommodations"])
 
 from app.utils.geo import haversine_distance, sort_by_proximity
 import json
+
+
+def _listing_preview(images: Optional[str]) -> Optional[str]:
+    """Return a lightweight listing-card image, never an inline base64 blob."""
+    if not images:
+        return None
+    try:
+        parsed = json.loads(images)
+        first = parsed[0] if isinstance(parsed, list) and parsed else None
+    except (TypeError, json.JSONDecodeError):
+        first = images
+    if not first or str(first).startswith("data:"):
+        return None
+    return str(first)
 
 @router.get("/", response_model=List[AccommodationResponse])
 async def get_accommodations(
@@ -94,6 +113,35 @@ async def get_my_accommodations(
     query = select(Accommodation).where(Accommodation.owner_id == current_user.id)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.get("/my/summary", response_model=List[AccommodationSummaryResponse])
+async def get_my_accommodation_summaries(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Accommodation)
+        .where(Accommodation.owner_id == current_user.id)
+        .order_by(Accommodation.name)
+    )
+    return [
+        AccommodationSummaryResponse(
+            id=acc.id,
+            owner_id=acc.owner_id,
+            name=acc.name,
+            type=acc.type,
+            gender=acc.gender,
+            address=acc.address,
+            city=acc.city,
+            price=acc.price,
+            sharing=acc.sharing,
+            status=acc.status,
+            is_verified=acc.is_verified,
+            image_url=_listing_preview(acc.images),
+        )
+        for acc in result.scalars().all()
+    ]
 
 @router.post("/", response_model=AccommodationResponse)
 async def create_accommodation(

@@ -235,6 +235,20 @@ class ReadingRoomResponse(ReadingRoomBase):
 
     class Config:
         from_attributes = True
+
+
+class ReadingRoomSummaryResponse(BaseModel):
+    id: str
+    owner_id: str = Field(serialization_alias="ownerId")
+    name: str
+    address: str
+    city: Optional[str] = None
+    status: ListingStatus = ListingStatus.DRAFT
+    is_verified: bool = Field(default=False, serialization_alias="isVerified")
+    image_url: Optional[str] = Field(default=None, serialization_alias="imageUrl")
+
+    class Config:
+        from_attributes = True
         populate_by_name = True
         # Pydantic v2: Use serialization aliases in responses
         json_schema_serialization_defaults_required = True

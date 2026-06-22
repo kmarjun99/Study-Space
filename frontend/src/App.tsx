@@ -287,9 +287,16 @@ const App: React.FC = () => {
     const fetchData = async () => {
       try {
         // Fetch Rooms, Cabins, and Accommodations from backend (source of truth)
-        const rooms = await venueService.getAllReadingRooms();
-        const cabins = await venueService.getAllCabins();
-        const accommodations = await supplyService.getAllAccommodations();
+        const isOwner = appState.currentUser?.role === UserRole.ADMIN;
+        const [rooms, cabins, accommodations] = await Promise.all([
+          isOwner
+            ? venueService.getMyReadingRooms()
+            : venueService.getAllReadingRooms(),
+          venueService.getAllCabins(),
+          isOwner
+            ? supplyService.getMyAccommodations()
+            : supplyService.getAllAccommodations(),
+        ]);
 
         // Always use backend data - don't fall back to mock data
         // Backend already filters to show: LIVE listings OR listings owned by current user

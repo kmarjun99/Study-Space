@@ -36,27 +36,23 @@ export const AdminListings: React.FC = () => {
             ]);
             setReadingRooms(venues);
             setAccommodations(accs);
-
-            // Fetch owner's flags to show correct status
-            try {
-                // We need to get current user ID - get it from localStorage or context
-                const userStr = localStorage.getItem('studySpace_user');
-                if (userStr) {
-                    const user = JSON.parse(userStr);
-                    if (user?.id) {
-                        const flags = await trustService.getOwnerFlags(user.id);
-                        // Filter for active (unresolved) flags
-                        const active = flags.filter(f => f.status !== 'resolved');
-                        setActiveFlags(active);
-                    }
-                }
-            } catch (flagErr) {
-                console.warn('Could not fetch flags:', flagErr);
-            }
         } catch (error) {
             console.error('Failed to fetch listings:', error);
         } finally {
             setIsLoading(false);
+        }
+
+        // Trust flags are secondary decoration. Do not block the entire My
+        // Listings screen while this request completes.
+        try {
+            const userStr = localStorage.getItem('studySpace_user');
+            const user = userStr ? JSON.parse(userStr) : null;
+            if (user?.id) {
+                const flags = await trustService.getOwnerFlags(user.id);
+                setActiveFlags(flags.filter(f => f.status !== 'resolved'));
+            }
+        } catch (flagErr) {
+            console.warn('Could not fetch flags:', flagErr);
         }
     };
 

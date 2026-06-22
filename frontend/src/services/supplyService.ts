@@ -47,7 +47,7 @@ export const supplyService = {
 
     getMyAccommodations: async (): Promise<Accommodation[]> => {
         try {
-            const response = await api.get('/api/accommodations/my');
+            const response = await api.get('/api/accommodations/my/summary');
             if (!response.data || !Array.isArray(response.data)) {
                 return [];
             }

@@ -78,6 +78,18 @@ def test_api_public_endpoints_are_registered():
     assert not leaked, f"Old /public/* routes still present: {leaked}"
 
 
+def test_owner_listing_summary_endpoints_are_registered():
+    """My Listings uses lightweight summaries instead of downloading every
+    inline base64 image from the full owner listing responses."""
+    registered = {r.path for r in app.routes if hasattr(r, "path")}
+    expected = {
+        "/api/reading-rooms/my-venues/summary",
+        "/api/accommodations/my/summary",
+    }
+    missing = expected - registered
+    assert not missing, f"Missing owner listing summary routes: {missing}"
+
+
 @pytest.mark.asyncio
 async def test_api_events_endpoint_resolves():
     """/api/events accepts POST (intelligence event firehose)."""

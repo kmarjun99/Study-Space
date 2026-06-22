@@ -57,3 +57,21 @@ class AccommodationResponse(AccommodationBase):
 
     class Config:
         from_attributes = True
+
+
+class AccommodationSummaryResponse(BaseModel):
+    id: str
+    owner_id: str
+    name: str
+    type: AccommodationType
+    gender: Gender
+    address: str
+    city: Optional[str] = None
+    price: float
+    sharing: str
+    status: ListingStatus = ListingStatus.DRAFT
+    is_verified: bool = False
+    image_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True

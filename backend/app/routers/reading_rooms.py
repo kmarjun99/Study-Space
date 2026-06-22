@@ -11,6 +11,7 @@ from app.schemas.reading_room import (
     ReadingRoomResponse,
     CabinCreate,
     CabinResponse,
+    ReadingRoomSummaryResponse,
     ReadingRoomUpdate,
     DurationConfigUpdate,
 )
@@ -102,6 +103,20 @@ async def get_reading_rooms(
 
 from app.schemas.user import UserResponse
 
+
+def _listing_preview(images: Optional[str]) -> Optional[str]:
+    """Return a lightweight listing-card image, never an inline base64 blob."""
+    if not images:
+        return None
+    try:
+        parsed = json.loads(images)
+        first = parsed[0] if isinstance(parsed, list) and parsed else None
+    except (TypeError, json.JSONDecodeError):
+        first = images
+    if not first or str(first).startswith("data:"):
+        return None
+    return str(first)
+
 @router.get("/my-venues", response_model=List[ReadingRoomResponse], response_model_by_alias=True)
 async def get_my_venues(
     db: AsyncSession = Depends(get_db),
@@ -116,6 +131,35 @@ async def get_my_venues(
     result = await db.execute(query)
     venues = result.scalars().all()
     return venues
+
+
+@router.get(
+    "/my-venues/summary",
+    response_model=List[ReadingRoomSummaryResponse],
+    response_model_by_alias=True,
+)
+async def get_my_venue_summaries(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ReadingRoom)
+        .where(ReadingRoom.owner_id == current_user.id)
+        .order_by(ReadingRoom.name)
+    )
+    return [
+        ReadingRoomSummaryResponse(
+            id=venue.id,
+            owner_id=venue.owner_id,
+            name=venue.name,
+            address=venue.address,
+            city=venue.city,
+            status=venue.status,
+            is_verified=venue.is_verified,
+            image_url=_listing_preview(venue.images),
+        )
+        for venue in result.scalars().all()
+    ]
 
 @router.get("/my-students", response_model=List[UserResponse])
 async def get_my_students(

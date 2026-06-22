@@ -34,7 +34,7 @@ export const venueService = {
     },
 
     getMyReadingRooms: async (): Promise<ReadingRoom[]> => {
-        const response = await api.get('/api/reading-rooms/my-venues');
+        const response = await api.get('/api/reading-rooms/my-venues/summary');
         if (!response.data || !Array.isArray(response.data)) {
             console.warn("getMyReadingRooms returned invalid data:", response.data);
             return [];

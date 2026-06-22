@@ -56,9 +56,17 @@ class MessagingWebSocket {
   private currentUserId: string | null = null;
   private heartbeatInterval: number | null = null;
   private manuallyDisconnected = false;
+  private reconnectAttempts = 0;
 
   connect(userId: string) {
-    if (this.socket?.readyState === WebSocket.OPEN && this.currentUserId === userId) {
+    if (
+      this.socket
+      && (
+        this.socket.readyState === WebSocket.OPEN
+        || this.socket.readyState === WebSocket.CONNECTING
+      )
+      && this.currentUserId === userId
+    ) {
       return; // Already connected for this user
     }
     if (this.currentUserId && this.currentUserId !== userId) {
@@ -72,7 +80,8 @@ class MessagingWebSocket {
 
   /**
    * Compute the WebSocket base URL. In order of preference:
-   *   1. VITE_API_BASE_URL build-arg (with http(s) -> ws(s) protocol swap).
+   *   1. Runtime API URL injected by env-config.js.
+   *   2. VITE_API_BASE_URL build-arg (with http(s) -> ws(s) protocol swap).
    *      Used in dev (points at http://localhost:8000) and in any prod build
    *      that explicitly bakes the backend Cloud Run URL into the bundle.
    *   2. Same-origin fallback derived from window.location. In production
@@ -85,11 +94,15 @@ class MessagingWebSocket {
    * for `https://` inputs in some browsers, which then fails the upgrade.
    */
   private resolveWsBaseUrl(): string {
-    const buildTimeBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
-    if (buildTimeBase) {
-      if (buildTimeBase.startsWith('https://')) return 'wss://' + buildTimeBase.slice('https://'.length);
-      if (buildTimeBase.startsWith('http://'))  return 'ws://'  + buildTimeBase.slice('http://'.length);
-      return buildTimeBase; // assume the caller already passed ws(s)://
+    const runtimeBase = typeof window !== 'undefined'
+      ? window.__MYSPACE_RUNTIME_CONFIG__?.API_BASE_URL?.trim()
+      : undefined;
+    const configuredBase = runtimeBase || import.meta.env.VITE_API_BASE_URL;
+    if (configuredBase) {
+      const normalized = configuredBase.replace(/\/+$/, '');
+      if (normalized.startsWith('https://')) return 'wss://' + normalized.slice('https://'.length);
+      if (normalized.startsWith('http://'))  return 'ws://'  + normalized.slice('http://'.length);
+      return normalized; // assume the caller already passed ws(s)://
     }
     if (typeof window !== 'undefined' && window.location) {
       const host = window.location.host;
@@ -120,6 +133,7 @@ class MessagingWebSocket {
 
     this.socket.onopen = () => {
       console.log('[Messaging WS] Connected');
+      this.reconnectAttempts = 0;
       this.startHeartbeat();
     };
 
@@ -160,10 +174,12 @@ class MessagingWebSocket {
 
   private scheduleReconnect() {
     if (this.reconnectTimeout) return;
+    this.reconnectAttempts += 1;
+    const delay = Math.min(30000, 1000 * (2 ** Math.min(this.reconnectAttempts, 5)));
     this.reconnectTimeout = window.setTimeout(() => {
       this.reconnectTimeout = null;
       this.openSocket();
-    }, 3000);
+    }, delay);
   }
 
   private startHeartbeat() {
@@ -195,6 +211,7 @@ class MessagingWebSocket {
       this.socket = null;
     }
     this.currentUserId = null;
+    this.reconnectAttempts = 0;
   }
 
   subscribe(listener: MessageListener): () => void {
