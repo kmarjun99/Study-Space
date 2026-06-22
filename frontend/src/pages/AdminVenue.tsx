@@ -4,6 +4,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { imageUrl } from '../utils/imageUtils';
 import { compactVenueImages, compressVenueImage } from '../utils/imageCompression';
+import {
+    areDurationConfigsEqual,
+    areImagesEqual,
+    areVenueDetailsEqual,
+    isCabinsComplete,
+    isDurationConfigComplete,
+    isPhotosComplete,
+    isVenueDetailsComplete,
+    normalizeDurationConfig,
+} from '../utils/venueOnboarding';
+import type { OnboardingStep, SavedDurationConfig } from '../utils/venueOnboarding';
 
 import { AppState, ReadingRoom, Cabin, CabinStatus, ListingStatus, PromotionPlan, PromotionRequest } from '../types';
 import { Card, Button, Input, Badge, Modal, LiveIndicator } from '../components/UI';
@@ -122,11 +133,27 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
 
                     // CRITICAL FIX: Initialize form data IMMEDIATELY to prevent race conditions
                     // and ensure inputs are editable.
-                    setVenueFormData({
+                    const loadedFormData = {
                         ...data,
                         amenities: parseAmenities(data.amenities as any)
-                    });
-                    setImages(getVenueImages(data));
+                    };
+                    const loadedImages = getVenueImages(data);
+                    const loadedDurations = data.allowedBookingDurations && Array.isArray(data.allowedBookingDurations)
+                        ? data.allowedBookingDurations
+                        : ['1_MONTH'];
+                    const loadedDurationPrices = data.durationPrices && typeof data.durationPrices === 'object'
+                        ? data.durationPrices as Record<string, number>
+                        : {};
+
+                    setVenueFormData(loadedFormData);
+                    setImages(loadedImages);
+                    setSavedVenueFormData(loadedFormData);
+                    setSavedImages(loadedImages);
+                    setSavedDurationConfig(
+                        isDurationConfigComplete(loadedDurations, loadedDurationPrices)
+                            ? normalizeDurationConfig(loadedDurations, loadedDurationPrices)
+                            : null
+                    );
 
                     if (data.priceStart) {
                         setBatchConfig(prev => ({ ...prev, price: data.priceStart! }));
@@ -134,12 +161,8 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                     }
                     
                     // Load duration configuration if exists
-                    if (data.allowedBookingDurations && Array.isArray(data.allowedBookingDurations)) {
-                        setEnabledDurations(data.allowedBookingDurations);
-                    }
-                    if (data.durationPrices && typeof data.durationPrices === 'object') {
-                        setDurationPrices(data.durationPrices);
-                    }
+                    setEnabledDurations(loadedDurations);
+                    setDurationPrices(loadedDurationPrices);
 
                 } catch (error) {
                     console.error("Failed to fetch venue details:", error);
@@ -178,12 +201,15 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     }, [venue, state]);
 
     // --- Form State ---
-    const [step, setStep] = useState(1);
+    const [step, setStep] = useState<OnboardingStep>(1);
     const [submitting, setSubmitting] = useState(false);
     const [processingImages, setProcessingImages] = useState(false);
     const saveInFlightRef = useRef(false);
     const [venueFormData, setVenueFormData] = useState<Partial<ReadingRoom>>({});
     const [images, setImages] = useState<string[]>([]);
+    const [savedVenueFormData, setSavedVenueFormData] = useState<Partial<ReadingRoom> | null>(null);
+    const [savedImages, setSavedImages] = useState<string[]>([]);
+    const [savedDurationConfig, setSavedDurationConfig] = useState<SavedDurationConfig | null>(null);
     const [cabinFormData, setCabinFormData] = useState<Partial<Cabin>>({
         number: '', floor: 1, status: CabinStatus.AVAILABLE, amenities: ['WiFi', 'AC']
     });
@@ -224,6 +250,9 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
         if (isNewMode) {
             setVenueFormData({});
             setImages([]);
+            setSavedVenueFormData(null);
+            setSavedImages([]);
+            setSavedDurationConfig(null);
             setStep(1);
         }
     }, [isNewMode]);
@@ -243,6 +272,62 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     const isLive = currentStatus === ListingStatus.LIVE;
     const isPending = currentStatus === ListingStatus.VERIFICATION_PENDING || currentStatus === ListingStatus.PAYMENT_PENDING;
     const isDraft = !venue || currentStatus === ListingStatus.DRAFT || currentStatus === ListingStatus.REJECTED;
+
+    const completedSteps = useMemo<Record<OnboardingStep, boolean>>(() => ({
+        1: isVenueDetailsComplete(savedVenueFormData),
+        2: isPhotosComplete(savedImages),
+        3: isCabinsComplete(myCabins),
+        4: savedDurationConfig
+            ? isDurationConfigComplete(
+                savedDurationConfig.enabledDurations,
+                savedDurationConfig.prices,
+            )
+            : false,
+    }), [savedVenueFormData, savedImages, myCabins, savedDurationConfig]);
+
+    const unlockedSteps = useMemo<Record<OnboardingStep, boolean>>(() => ({
+        1: true,
+        2: completedSteps[1],
+        3: completedSteps[1] && completedSteps[2],
+        4: completedSteps[1] && completedSteps[2] && completedSteps[3],
+    }), [completedSteps]);
+
+    const isStepDirty = (targetStep: OnboardingStep) => {
+        if (targetStep === 1) {
+            return Boolean(customAmenity.trim())
+                || (
+                    savedVenueFormData !== null
+                    && !areVenueDetailsEqual(venueFormData, savedVenueFormData)
+                );
+        }
+        if (targetStep === 2) {
+            return !areImagesEqual(images, savedImages);
+        }
+        if (targetStep === 4) {
+            return !areDurationConfigsEqual(
+                enabledDurations,
+                durationPrices,
+                savedDurationConfig,
+            );
+        }
+        // Cabins are persisted immediately through their add/edit/delete APIs.
+        return false;
+    };
+
+    const navigateToStep = (targetStep: OnboardingStep) => {
+        if (targetStep === step || !unlockedSteps[targetStep] || submitting || processingImages) {
+            return;
+        }
+
+        if (
+            isStepDirty(step)
+            && !window.confirm('This section has unsaved changes. Leave it without saving?')
+        ) {
+            return;
+        }
+
+        setStep(targetStep);
+    };
 
     // Trust & Safety Status
     const [trustStatus, setTrustStatus] = useState<VenueTrustStatus | null>(null);
@@ -320,8 +405,8 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
         if (saveInFlightRef.current || processingImages) return;
 
         // Validation for Step 1
-        if (!venueFormData.name || !venueFormData.address || !venueFormData.city || !venueFormData.contactPhone || !venueFormData.priceStart) {
-            alert("Please complete all mandatory details.");
+        if (!isVenueDetailsComplete(venueFormData)) {
+            alert("Please complete all mandatory details and select at least one amenity.");
             return;
         }
 
@@ -349,10 +434,17 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 }
             } else {
                 await onUpdateRoom(dataToSave);
+                const savedFormData = {
+                    ...venueFormData,
+                    images: JSON.stringify(compactedImages),
+                };
+                setSavedVenueFormData(savedFormData);
+                setSavedImages(compactedImages);
+                setFetchedVenue(prev => prev ? { ...prev, ...savedFormData } : prev);
                 toast.success('Changes saved successfully!');
 
                 if (nextStep) {
-                    setStep(nextStep);
+                    setStep(nextStep as OnboardingStep);
                 } else if (isLive) {
                     setTimeout(() => window.location.reload(), 500);
                 }
@@ -952,7 +1044,7 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
 
             {!isLive && (
                 <div className="mt-6 flex justify-between">
-                    <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+                    <Button variant="outline" onClick={() => navigateToStep(1)}>Back</Button>
                     <div className="flex gap-2 items-center">
                         <span className={`text-sm ${displayImages.length >= 4 ? 'text-green-600' : 'text-red-500'}`}>
                             {displayImages.length} / 4 uploaded
@@ -1030,13 +1122,19 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 // Route through shared axios instance — see DurationSettings.tsx
                 // for context on why the env-var + raw-fetch pattern was broken
                 // in production.
-                await api.put(
+                const { data: updatedVenue } = await api.put(
                     `/api/reading-rooms/${venue.id}/duration-config`,
                     {
                         allowed_booking_durations: enabledDurations,
                         duration_prices: durationPrices,
                     },
                 );
+                setSavedDurationConfig(normalizeDurationConfig(enabledDurations, durationPrices));
+                setFetchedVenue(prev => prev ? {
+                    ...prev,
+                    allowedBookingDurations: updatedVenue.allowedBookingDurations || enabledDurations,
+                    durationPrices: updatedVenue.durationPrices || durationPrices,
+                } : prev);
                 toast.success('Duration settings saved!');
                 handleProceedToPayment();
             } catch (error) {
@@ -1117,7 +1215,7 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
                 </div>
 
                 <div className="mt-6 flex justify-between">
-                    <Button variant="outline" onClick={() => setStep(3)}>Back</Button>
+                    <Button variant="outline" onClick={() => navigateToStep(3)}>Back</Button>
                     <Button 
                         onClick={handleSaveDurationConfig}
                         className="bg-green-600 hover:bg-green-700 text-white"
@@ -1223,8 +1321,12 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
 
             {isWizardMode && (
                 <div className="flex justify-between">
-                    <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-                    <Button onClick={() => setStep(4)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                    <Button variant="outline" onClick={() => navigateToStep(2)}>Back</Button>
+                    <Button
+                        onClick={() => navigateToStep(4)}
+                        disabled={!unlockedSteps[4]}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
                         Continue <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                 </div>
@@ -1771,17 +1873,69 @@ const AdminVenueBase: React.FC<AdminVenueProps> = ({ state, onCreateRoom, onUpda
     }
 
     // Default: Onboarding Wizard
+    const onboardingSteps: Array<{ number: OnboardingStep; label: string }> = [
+        { number: 1, label: 'Details' },
+        { number: 2, label: 'Photos' },
+        { number: 3, label: 'Cabins' },
+        { number: 4, label: 'Durations' },
+    ];
+
     return (
         <div className="max-w-3xl mx-auto p-6 pb-24">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Venue Onboarding</h1>
             <p className="text-gray-500 mb-8">Complete these steps to list your reading room.</p>
 
-            <div className="flex items-center mb-8 relative">
-                <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-gray-200 -z-10"></div>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} transition-colors`} style={{marginLeft: '0'}}>1</div>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} transition-colors`} style={{marginLeft: '33.33%'}}>2</div>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 3 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} transition-colors`} style={{marginLeft: '33.33%'}}>3</div>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 4 ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'} transition-colors`} style={{marginLeft: '33.33%'}}>4</div>
+            <div className="relative grid grid-cols-4 gap-2 mb-8" aria-label="Venue onboarding progress">
+                <div className="absolute left-[12.5%] right-[12.5%] top-4 h-0.5 bg-gray-200" />
+                {onboardingSteps.map(({ number, label }) => {
+                    const isActive = step === number;
+                    const isCompleted = completedSteps[number];
+                    const isUnlocked = unlockedSteps[number];
+                    const isDirty = isActive && isStepDirty(number);
+
+                    const circleClass = isActive
+                        ? 'bg-indigo-600 text-white ring-4 ring-indigo-100'
+                        : isCompleted
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            : isUnlocked
+                                ? 'bg-white text-indigo-700 border-2 border-indigo-400 hover:bg-indigo-50'
+                                : 'bg-gray-200 text-gray-400 border-2 border-gray-200';
+
+                    const statusLabel = isActive
+                        ? (isDirty ? 'Unsaved' : 'Current')
+                        : isCompleted
+                            ? 'Completed'
+                            : isUnlocked
+                                ? 'Available'
+                                : 'Locked';
+
+                    return (
+                        <button
+                            key={number}
+                            type="button"
+                            disabled={!isUnlocked || submitting || processingImages}
+                            onClick={() => navigateToStep(number)}
+                            aria-current={isActive ? 'step' : undefined}
+                            aria-label={`Step ${number}: ${label}, ${statusLabel}`}
+                            className="relative z-10 flex min-w-0 flex-col items-center disabled:cursor-not-allowed"
+                            title={!isUnlocked ? 'Complete the preceding required steps first' : `Go to ${label}`}
+                        >
+                            <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-all ${circleClass}`}>
+                                {isCompleted && !isActive
+                                    ? <Check className="h-4 w-4" />
+                                    : !isUnlocked
+                                        ? <Lock className="h-3.5 w-3.5" />
+                                        : number}
+                            </span>
+                            <span className={`mt-2 truncate text-xs font-semibold ${isActive ? 'text-indigo-700' : isUnlocked ? 'text-gray-700' : 'text-gray-400'}`}>
+                                {label}
+                            </span>
+                            <span className={`text-[10px] ${isDirty ? 'text-amber-600' : isCompleted ? 'text-emerald-600' : isUnlocked ? 'text-indigo-500' : 'text-gray-400'}`}>
+                                {statusLabel}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             {step === 1 && renderDetailsForm(false)}
