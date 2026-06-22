@@ -92,6 +92,7 @@ export interface ReadingRoom {
   locationId?: string;  // NEW: Reference to locations table
   description: string;
   imageUrl: string;
+  hasImages?: boolean;
   images?: string; // JSON String representation of image array
   amenities: string[];
   contactPhone: string;

@@ -75,6 +75,13 @@ export const venueService = {
         };
     },
 
+    getReadingRoomPreview: async (roomId: string): Promise<Blob> => {
+        const response = await api.get(`/api/reading-rooms/${roomId}/preview-image`, {
+            responseType: 'blob',
+        });
+        return response.data;
+    },
+
     getAllCabins: async (): Promise<Cabin[]> => {
         const response = await api.get('/api/cabins/');
         // Safety check: if response.data is null or undefined, return empty array

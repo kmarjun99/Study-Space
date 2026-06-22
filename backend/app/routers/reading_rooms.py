@@ -1,5 +1,9 @@
 from typing import List, Annotated
-from fastapi import APIRouter, Depends, HTTPException
+import base64
+import binascii
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
@@ -18,7 +22,6 @@ from app.schemas.reading_room import (
 from app.models.user import User, UserRole
 from app.deps import get_current_user, get_current_admin, get_current_user_optional
 from pydantic import BaseModel, Field, field_validator
-import json
 
 router = APIRouter(prefix="/reading-rooms", tags=["reading-rooms"])
 
@@ -104,8 +107,7 @@ async def get_reading_rooms(
 from app.schemas.user import UserResponse
 
 
-def _listing_preview(images: Optional[str]) -> Optional[str]:
-    """Return a lightweight listing-card image, never an inline base64 blob."""
+def _first_listing_image(images: Optional[str]) -> Optional[str]:
     if not images:
         return None
     try:
@@ -113,9 +115,15 @@ def _listing_preview(images: Optional[str]) -> Optional[str]:
         first = parsed[0] if isinstance(parsed, list) and parsed else None
     except (TypeError, json.JSONDecodeError):
         first = images
-    if not first or str(first).startswith("data:"):
+    return str(first) if first else None
+
+
+def _listing_preview(images: Optional[str]) -> Optional[str]:
+    """Return a lightweight listing-card image, never an inline base64 blob."""
+    first = _first_listing_image(images)
+    if not first or first.startswith("data:"):
         return None
-    return str(first)
+    return first
 
 @router.get("/my-venues", response_model=List[ReadingRoomResponse], response_model_by_alias=True)
 async def get_my_venues(
@@ -157,9 +165,59 @@ async def get_my_venue_summaries(
             status=venue.status,
             is_verified=venue.is_verified,
             image_url=_listing_preview(venue.images),
+            has_images=bool(_first_listing_image(venue.images)),
         )
         for venue in result.scalars().all()
     ]
+
+
+@router.get("/{room_id}/preview-image")
+async def get_reading_room_preview_image(
+    room_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return one stored inline venue image without adding it to summary JSON."""
+    result = await db.execute(select(ReadingRoom).where(ReadingRoom.id == room_id))
+    room = result.scalars().first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Reading room not found")
+
+    is_owner = room.owner_id == current_user.id
+    is_super_admin = current_user.role == UserRole.SUPER_ADMIN
+    if not (is_owner or is_super_admin):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    source = _first_listing_image(room.images)
+    if not source:
+        raise HTTPException(status_code=404, detail="Reading room image not found")
+
+    # Non-inline images are already returned directly by the lightweight
+    # summary endpoint and should not need this authenticated fallback.
+    if not source.startswith("data:"):
+        raise HTTPException(status_code=404, detail="Inline preview image not found")
+
+    try:
+        header, encoded = source.split(",", 1)
+        media_type = header[5:].split(";", 1)[0].lower()
+        if media_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+            raise ValueError("Unsupported image type")
+        content = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=422, detail="Stored reading room image is invalid")
+
+    if not content:
+        raise HTTPException(status_code=422, detail="Stored reading room image is empty")
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "Content-Disposition": "inline",
+        },
+    )
+
 
 @router.get("/my-students", response_model=List[UserResponse])
 async def get_my_students(

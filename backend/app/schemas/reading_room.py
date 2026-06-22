@@ -246,6 +246,7 @@ class ReadingRoomSummaryResponse(BaseModel):
     status: ListingStatus = ListingStatus.DRAFT
     is_verified: bool = Field(default=False, serialization_alias="isVerified")
     image_url: Optional[str] = Field(default=None, serialization_alias="imageUrl")
+    has_images: bool = Field(default=False, serialization_alias="hasImages")
 
     class Config:
         from_attributes = True

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { AppState, CabinStatus, Accommodation, ListingStatus, Ad } from '../types';
 import { Card, Badge, Button } from '../components/UI';
 import { supplyService } from '../services/supplyService';
+import { venueService } from '../services/venueService';
 import { imageUrl } from '../utils/imageUtils';
 import { AdBanner } from '../components/AdBanner';
 import { adService, getTargetedAd } from '../services/adService';
@@ -65,6 +66,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ state }) => {
 
     // --- 1. Identification ---
     const myRoom = state.readingRooms.find(r => r.ownerId === state.currentUser?.id);
+    const [venuePreviewUrl, setVenuePreviewUrl] = useState('');
+    const [venueImageFailed, setVenueImageFailed] = useState(false);
+
+    useEffect(() => {
+        setVenueImageFailed(false);
+        setVenuePreviewUrl('');
+
+        if (!myRoom || myRoom.imageUrl || !myRoom.hasImages) return;
+
+        let active = true;
+        let objectUrl = '';
+
+        venueService.getReadingRoomPreview(myRoom.id)
+            .then((blob) => {
+                if (!active) return;
+                objectUrl = URL.createObjectURL(blob);
+                setVenuePreviewUrl(objectUrl);
+            })
+            .catch((error) => {
+                if (!active) return;
+                console.error('Failed to load reading room preview', error);
+                setVenueImageFailed(true);
+            });
+
+        return () => {
+            active = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [myRoom?.id, myRoom?.imageUrl, myRoom?.hasImages]);
+
+    const venueImageSource = myRoom?.imageUrl
+        ? imageUrl(myRoom.imageUrl, { w: 480, fmt: 'webp' })
+        : venuePreviewUrl;
+
     // Fetch fresh accommodations to avoid stale status
     const [myAccommodations, setMyAccommodations] = useState<Accommodation[]>(state.accommodations.filter(a => a.ownerId === state.currentUser?.id));
 
@@ -348,8 +383,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ state }) => {
 
                         {/* Venue Overview Card */}
                         <Card className="p-0 overflow-hidden flex flex-col md:flex-row">
-                            <div className="w-full md:w-1/4 h-32 md:h-auto relative bg-gray-200">
-                                <img src={imageUrl(myRoom.imageUrl, { w: 480, fmt: 'webp' })} alt={myRoom.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                            <div className="w-full md:w-1/4 h-32 md:h-auto min-h-32 relative bg-gray-100">
+                                {venueImageSource && !venueImageFailed ? (
+                                    <img
+                                        src={venueImageSource}
+                                        alt={myRoom.name}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                        decoding="async"
+                                        onError={() => setVenueImageFailed(true)}
+                                    />
+                                ) : (
+                                    <div
+                                        className="w-full h-full min-h-32 flex items-center justify-center text-gray-400"
+                                        aria-label={`${myRoom.name} image unavailable`}
+                                    >
+                                        <Building2 className="w-10 h-10" aria-hidden="true" />
+                                    </div>
+                                )}
                             </div>
                             <div className="p-5 flex-1 flex flex-col justify-center">
                                 <div className="flex items-center justify-between mb-1">
