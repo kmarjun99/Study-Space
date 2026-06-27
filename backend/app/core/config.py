@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 14
+    REFRESH_SESSION_ABSOLUTE_DAYS: int = 30
 
     # Deployment environment (development | production)
     ENVIRONMENT: str = "development"
@@ -19,6 +21,7 @@ class Settings(BaseSettings):
     mail_from: Optional[str] = "noreply@studyspace.com"
     mail_port: Optional[int] = 587
     mail_server: Optional[str] = "smtp.gmail.com"
+    FRONTEND_URL: Optional[str] = ""
 
     # SendGrid Configuration
     sendgrid_api_key: Optional[str] = ""

@@ -51,6 +51,7 @@ export interface User {
   avatarUrl?: string;
   phone?: string;
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NOT_REQUIRED';
+  mustSetPassword?: boolean;
   has_active_waitlist?: boolean;
 }
 
@@ -179,6 +180,12 @@ export interface Booking {
   venueName?: string;
   ownerName?: string;
   ownerId?: string;
+  joiningDate?: string;
+  expiryDate?: string;
+  renewalWindowStart?: string;
+  renewalWindowEnd?: string;
+  renewalStatus?: 'ACTIVE' | 'RENEWAL_DUE' | 'EXPIRED' | 'PAYMENT_PENDING';
+  renewalDay?: number | null;
 
   // Duration Type (NEW)
   durationType?: BookingDurationType;

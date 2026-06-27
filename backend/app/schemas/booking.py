@@ -19,6 +19,12 @@ class BookingBase(BaseModel):
     owner_name: Optional[str] = None
     owner_id: Optional[str] = None
     cabin_number: Optional[str] = None
+    joining_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    renewal_window_start: Optional[str] = None
+    renewal_window_end: Optional[str] = None
+    renewal_status: Optional[str] = None
+    renewal_day: Optional[int] = None
 
 class BookingCreate(BookingBase):
     user_id: Optional[str] = None

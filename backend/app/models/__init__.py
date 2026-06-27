@@ -5,6 +5,8 @@ from app.models.accommodation import Accommodation
 from app.models.booking import Booking, BookingStatus, PaymentStatus, SettlementStatus, GSTTreatment
 from app.models.review import Review
 from app.models.waitlist import WaitlistEntry
+from app.models.message import Conversation, Message
+from app.models.notification import Notification
 from app.models.favorite import Favorite
 from app.models.city import CitySettings
 from app.models.ad import Ad
@@ -30,6 +32,8 @@ from app.models.subscription_plan import SubscriptionPlan
 
 # OTP & Password Reset
 from app.models.otp import OTP, PasswordReset
+from app.models.auth_session import RefreshSession
+from app.models.booking_renewal import BookingRenewalReminder
 
 # ---- Accounting / Tax / Settlement (Transaction-Flow Foundation) ----
 from app.models.chart_of_accounts import ChartOfAccounts

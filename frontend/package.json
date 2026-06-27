@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "test:auth": "node --test tests/authSession.test.mjs",
+    "test:renewal": "node --test tests/renewalDisplay.test.mjs",
+    "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

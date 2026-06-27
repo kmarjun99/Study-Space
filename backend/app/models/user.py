@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Enum, Float, DateTime
+from sqlalchemy import Boolean, Column, String, Enum, Float, DateTime, ForeignKey
 from app.database import Base
 import enum
 
@@ -40,6 +40,9 @@ class User(Base):
     verification_status = Column(Enum(VerificationStatus, native_enum=False), default=VerificationStatus.NOT_REQUIRED, nullable=False)
     avatar_url = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    created_by_owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    must_set_password = Column(Boolean, nullable=False, default=False)
+    email_verified_at = Column(DateTime, nullable=True)
 
     # Location Data
     current_lat = Column(Float, nullable=True)

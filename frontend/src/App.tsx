@@ -194,6 +194,20 @@ import { subscriptionService } from './services/subscriptionService';
 import { favoritesService } from './services/favoritesService';
 import { messagingService } from './services/messagingService';
 import { waitlistService } from './services/waitlistService';
+import { authService } from './services/authService';
+import {
+  AUTH_EVENT_KEY,
+  INACTIVITY_TIMEOUT_MS,
+  INACTIVITY_WARNING_MS,
+  canRestoreStoredSession,
+  clearAuthSession,
+  getStoredUser,
+  isInactive,
+  recordActivity,
+  savePendingRedirect,
+  shouldShowInactivityWarning,
+  updateStoredUser,
+} from './utils/authSession';
 
 // Wrapper to force remount when venueId changes
 const AdminVenueWrapper: React.FC<any> = (props) => {
@@ -201,12 +215,128 @@ const AdminVenueWrapper: React.FC<any> = (props) => {
   return <AdminVenue key={venueId} {...props} />;
 };
 
+const SessionLifecycle: React.FC<{
+  currentUser: User;
+  onSessionEnded: (reason?: string) => void;
+  onSessionRefreshed: (user?: User) => void;
+}> = ({ currentUser, onSessionEnded, onSessionRefreshed }) => {
+  const location = useLocation();
+  const warningToastId = React.useRef<string | null>(null);
+  const lastActivityRecordAt = React.useRef(0);
+
+  const dismissWarning = () => {
+    if (warningToastId.current) {
+      toast.dismiss(warningToastId.current);
+      warningToastId.current = null;
+    }
+  };
+
+  const noteActivity = React.useCallback(() => {
+    const now = Date.now();
+    if (now - lastActivityRecordAt.current < 1_000) return;
+    lastActivityRecordAt.current = now;
+    recordActivity('user');
+    dismissWarning();
+  }, []);
+
+  React.useEffect(() => {
+    recordActivity('route');
+    dismissWarning();
+  }, [location.pathname, location.search, location.hash]);
+
+  React.useEffect(() => {
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(eventName => window.addEventListener(eventName, noteActivity, { passive: true }));
+    return () => events.forEach(eventName => window.removeEventListener(eventName, noteActivity));
+  }, [noteActivity]);
+
+  React.useEffect(() => {
+    const handleAuthEvent = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail) return;
+
+      if (detail.type === 'logout') {
+        if (detail.redirectTo) {
+          savePendingRedirect(detail.redirectTo);
+        }
+        dismissWarning();
+        onSessionEnded(detail.reason);
+      } else if (detail.type === 'activity') {
+        dismissWarning();
+      } else if (detail.type === 'session-refreshed' || detail.type === 'login') {
+        onSessionRefreshed(getStoredUser());
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== AUTH_EVENT_KEY || !event.newValue) return;
+      try {
+        const parsed = JSON.parse(event.newValue);
+        handleAuthEvent(new CustomEvent('studyspace-auth', { detail: parsed }));
+      } catch {
+        // Ignore malformed external storage events.
+      }
+    };
+
+    window.addEventListener('studyspace-auth', handleAuthEvent as EventListener);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('studyspace-auth', handleAuthEvent as EventListener);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [onSessionEnded, onSessionRefreshed]);
+
+  React.useEffect(() => {
+    const checkSession = () => {
+      if (!currentUser) return;
+
+      const redirectTo = location.pathname + location.search + location.hash;
+      if (isInactive()) {
+        dismissWarning();
+        clearAuthSession('inactive', { redirectTo });
+        onSessionEnded('inactive');
+        toast.error(`You were logged out after ${Math.round(INACTIVITY_TIMEOUT_MS / 60_000)} minutes of inactivity.`);
+        return;
+      }
+
+      if (shouldShowInactivityWarning() && !warningToastId.current) {
+        warningToastId.current = toast.custom((t) => (
+          <div className="rounded-xl border border-amber-200 bg-white p-4 shadow-lg max-w-sm">
+            <div className="font-semibold text-gray-900">Session ending soon</div>
+            <div className="mt-1 text-sm text-gray-600">
+              You will be logged out in about {Math.ceil(INACTIVITY_WARNING_MS / 60_000)} minutes unless you continue.
+            </div>
+            <button
+              className="mt-3 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white"
+              onClick={() => {
+                recordActivity('user');
+                dismissWarning();
+                toast.dismiss(t.id);
+              }}
+            >
+              Stay logged in
+            </button>
+          </div>
+        ), { duration: INACTIVITY_WARNING_MS });
+      }
+    };
+
+    checkSession();
+    const interval = window.setInterval(checkSession, 10_000);
+    return () => window.clearInterval(interval);
+  }, [currentUser, location.pathname, location.search, location.hash, onSessionEnded]);
+
+  return null;
+};
+
 const App: React.FC = () => {
   // --- Global App State Simulation ---
   const [appState, setAppState] = useState<AppState>(() => {
     // Check local storage for persisted user session
-    const savedUserJson = localStorage.getItem('studySpace_user');
-    const savedUser = savedUserJson ? JSON.parse(savedUserJson) : null;
+    const savedUser = canRestoreStoredSession() ? getStoredUser() : null;
+    if (!savedUser) {
+      clearAuthSession('restore-failed', { broadcast: false });
+    }
 
     // Load persisted settings ONLY
     const savedDataJson = localStorage.getItem('studySpace_settings');
@@ -347,7 +477,7 @@ const App: React.FC = () => {
               // Sync has_active_waitlist just in case
               if (myWaitlists.length > 0 && !appState.currentUser.has_active_waitlist) {
                 const updatedUser = { ...appState.currentUser, has_active_waitlist: true };
-                localStorage.setItem('studySpace_user', JSON.stringify(updatedUser));
+                updateStoredUser(updatedUser);
                 setAppState(prev => ({ ...prev, currentUser: updatedUser }));
               }
             } catch (e) {
@@ -473,57 +603,9 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [appState.currentUser]); // Re-run when user changes (login)
 
-  // Check for expiring bookings and create notifications
-  useEffect(() => {
-    if (!appState.currentUser || appState.currentUser.role !== UserRole.STUDENT) return;
-    
-    const checkExpiringBookings = () => {
-      const now = new Date();
-      const fiveDaysFromNow = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
-      
-      const userBookings = appState.bookings.filter(b => 
-        b.userId === appState.currentUser?.id && 
-        b.status === 'ACTIVE'
-      );
-      
-      userBookings.forEach(booking => {
-        const endDate = new Date(booking.endDate);
-        const daysUntilExpiry = Math.ceil((endDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-        
-        // Create notification if booking expires in 5 days or less and no such notification exists
-        if (daysUntilExpiry > 0 && daysUntilExpiry <= 5) {
-          const notifId = `expiry-${booking.id}`;
-          const existingNotif = appState.notifications.find(n => n.id === notifId);
-          
-          if (!existingNotif) {
-            const room = appState.readingRooms.find(r => 
-              appState.cabins.some(c => c.id === booking.cabinId && c.readingRoomId === r.id)
-            );
-            const venueName = room?.name || 'your venue';
-            
-            setAppState(prev => ({
-              ...prev,
-              notifications: [{
-                id: notifId,
-                userId: appState.currentUser!.id,
-                title: 'Booking Expiring Soon',
-                message: `Your booking at ${venueName} expires in ${daysUntilExpiry} day${daysUntilExpiry > 1 ? 's' : ''}. Consider extending your booking.`,
-                read: false,
-                date: new Date().toISOString(),
-                type: 'warning' as const
-              }, ...prev.notifications]
-            }));
-          }
-        }
-      });
-    };
-    
-    // Check immediately and then daily
-    checkExpiringBookings();
-    const interval = setInterval(checkExpiringBookings, 24 * 60 * 60 * 1000); // Check daily
-    
-    return () => clearInterval(interval);
-  }, [appState.bookings, appState.currentUser, appState.notifications, appState.readingRooms, appState.cabins]);
+  // Renewal reminders are generated durably by the backend scheduler now.
+  // Keeping this client-side simulation would create duplicate notifications
+  // after refreshes or across multiple tabs.
 
   // --- Actions ---
   const handleLogin = (email: string, role: UserRole, backendUser?: any) => {
@@ -563,8 +645,9 @@ const App: React.FC = () => {
       newNotifs.push(welcomeNotification);
     }
 
-    // Persist session
-    localStorage.setItem('studySpace_user', JSON.stringify(user));
+    // Persist session/user metadata. AuthPage already saved the token response;
+    // this keeps profile/user changes consistent across tabs.
+    updateStoredUser(user);
 
     setAppState(prev => ({
       ...prev,
@@ -573,11 +656,43 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleLogout = () => {
-    // Clear session
-    localStorage.removeItem('studySpace_user');
-    setAppState(prev => ({ ...prev, currentUser: null }));
+  const handleLogout = async () => {
+    const redirectTo = window.location.pathname + window.location.search + window.location.hash;
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.warn('Backend logout failed; clearing local session anyway.', error);
+    } finally {
+      clearAuthSession('logout', { redirectTo });
+      setAppState(prev => ({
+        ...prev,
+        currentUser: null,
+        bookings: [],
+        notifications: [],
+        favorites: [],
+        messages: [],
+        conversations: [],
+      }));
+    }
   };
+
+  const handleSessionEnded = React.useCallback((reason?: string) => {
+    setAppState(prev => ({
+      ...prev,
+      currentUser: null,
+      bookings: [],
+      notifications: [],
+      favorites: [],
+      messages: [],
+      conversations: [],
+      waitlist: [],
+    }));
+  }, []);
+
+  const handleSessionRefreshed = React.useCallback((user?: User) => {
+    if (!user) return;
+    setAppState(prev => ({ ...prev, currentUser: user }));
+  }, []);
 
   const handleUpdateUser = (updatedData: Partial<User>) => {
     if (!appState.currentUser) return;
@@ -593,7 +708,7 @@ const App: React.FC = () => {
     }));
 
     // Persist to local storage
-    localStorage.setItem('studySpace_user', JSON.stringify(updatedUser));
+    updateStoredUser(updatedUser);
   };
 
   const handleCreateReadingRoom = async (roomData: Partial<ReadingRoom>): Promise<ReadingRoom> => {
@@ -774,7 +889,7 @@ const App: React.FC = () => {
     };
 
     const updatedUser = { ...appState.currentUser, has_active_waitlist: true };
-    localStorage.setItem('studySpace_user', JSON.stringify(updatedUser));
+    updateStoredUser(updatedUser);
 
     setAppState(prev => ({
       ...prev,
@@ -1199,6 +1314,11 @@ const App: React.FC = () => {
         }}
       />
       <Router>
+        <SessionLifecycle
+          currentUser={appState.currentUser}
+          onSessionEnded={handleSessionEnded}
+          onSessionRefreshed={handleSessionRefreshed}
+        />
         <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Auth screens — kept reachable so a logged-in user can switch

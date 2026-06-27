@@ -30,6 +30,16 @@ export const authService = {
         };
     },
 
+    refreshSession: async () => {
+        const response = await api.post('/auth/refresh', undefined, { skipAuthRefresh: true } as any);
+        return response.data;
+    },
+
+    logout: async () => {
+        const response = await api.post('/auth/logout', undefined, { skipAuthRefresh: true } as any);
+        return response.data;
+    },
+
     register: async (email: string, password: string, role: string, name: string) => {
         const response = await api.post('/auth/register', {
             email,
@@ -66,6 +76,15 @@ export const authService = {
             password,
             name,
             role
+        });
+        return response.data;
+    },
+
+    completeOwnerInvite: async (email: string, otpCode: string, newPassword: string) => {
+        const response = await api.post('/auth/complete-owner-invite', {
+            email,
+            otp_code: otpCode,
+            new_password: newPassword
         });
         return response.data;
     },

@@ -34,6 +34,11 @@ async def send_otp(
     - password_reset: For password reset flow
     - verification: For general account verification
     """
+    if request.otp_type == "owner_invite":
+        raise HTTPException(
+            status_code=403,
+            detail="Owner invite codes can only be sent or resent by the reading room owner.",
+        )
     try:
         otp_code, expires_in = await otp_service.create_otp(
             db=db,
@@ -140,6 +145,11 @@ async def resend_otp(
     """
     Resend OTP to email only (invalidates previous OTPs)
     """
+    if request.otp_type == "owner_invite":
+        raise HTTPException(
+            status_code=403,
+            detail="Please ask the reading room owner to resend your invite.",
+        )
     try:
         otp_code, expires_in = await otp_service.create_otp(
             db=db,
@@ -155,7 +165,5 @@ async def resend_otp(
             message="New OTP sent successfully to your email",
             expires_in_seconds=expires_in
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to resend OTP: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to resend OTP: {str(e)}")

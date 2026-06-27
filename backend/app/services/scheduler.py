@@ -5,6 +5,7 @@ Defines four jobs:
   - generate_maintenance_charges : daily 02:00 IST — issues monthly fees
   - maintenance_dunning     : daily 09:00 IST — applies dunning matrix
   - ledger_integrity_check  : daily 04:00 IST — asserts ledger balances
+  - cabin_renewal_reminders : daily 08:30 IST — renewal reminders + expiry aging
 
 All jobs are best-effort and never raise — failures are logged.
 """
@@ -32,6 +33,7 @@ from app.services.profile_intelligence_service import rebuild_all_active_profile
 from app.services.segment_service import recompute_all_active_segments
 from app.services.notification_automation_service import evaluate_all_active_rules
 from app.services.notification_dispatcher_service import dispatch_pending
+from app.services.renewal_service import process_renewal_reminders_once
 from app.services.tax_engine import cfg_get, load_active_config
 
 
@@ -190,6 +192,16 @@ async def job_notification_automation_tick() -> None:
         _log.warning("notification_automation_tick failed: %s", exc)
 
 
+async def job_cabin_renewal_reminders() -> None:
+    try:
+        async with AsyncSessionLocal() as db:
+            summary = await process_renewal_reminders_once(db)
+            await db.commit()
+            _log.info("cabin_renewal_reminders: %s", summary)
+    except Exception as exc:
+        _log.warning("cabin_renewal_reminders failed: %s", exc)
+
+
 async def job_ledger_integrity_check() -> None:
     try:
         async with AsyncSessionLocal() as db:
@@ -276,6 +288,14 @@ def start_scheduler() -> AsyncIOScheduler:
         job_notification_automation_tick,
         IntervalTrigger(minutes=30),
         id="notification_automation_tick",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    sched.add_job(
+        job_cabin_renewal_reminders,
+        CronTrigger(hour=8, minute=30),
+        id="cabin_renewal_reminders",
         max_instances=1,
         coalesce=True,
         replace_existing=True,

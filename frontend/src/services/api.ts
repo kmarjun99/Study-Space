@@ -1,5 +1,12 @@
 
 import axios from 'axios';
+import {
+  clearAuthSession,
+  getAccessToken,
+  recordActivity,
+  shouldRefreshAccessToken,
+  updateStoredAccessSession,
+} from '../utils/authSession';
 
 
 
@@ -53,16 +60,49 @@ const getBaseUrl = (): string => {
 const api = axios.create({
   baseURL: getBaseUrl(), // Backend URL
   timeout: 30000, // 30 seconds timeout (increased for complex operations)
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+let refreshPromise: Promise<string | null> | null = null;
+
+const refreshAccessToken = async (): Promise<string | null> => {
+  if (!refreshPromise) {
+    refreshPromise = api
+      .post('/auth/refresh', undefined, { skipAuthRefresh: true } as any)
+      .then((response) => {
+        updateStoredAccessSession(response.data);
+        return response.data.access_token as string;
+      })
+      .catch((error) => {
+        const redirectTo = window.location.pathname + window.location.search + window.location.hash;
+        clearAuthSession('expired', { redirectTo });
+        return null;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
 // Add a request interceptor
 api.interceptors.request.use(
-  (config) => {
-    // Get the token from local storage
-    const token = localStorage.getItem('studySpace_token');
+  async (config) => {
+    const skipAuthRefresh = Boolean((config as any).skipAuthRefresh);
+    if (!skipAuthRefresh) {
+      recordActivity('api');
+    }
+
+    // Get the token from local storage. If it is close to expiring, refresh it
+    // before the request so active users are not logged out while working.
+    let token = getAccessToken();
+    if (token && !skipAuthRefresh && shouldRefreshAccessToken(token)) {
+      token = await refreshAccessToken();
+    }
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -101,8 +141,9 @@ const TOKEN_REJECT_PATTERNS = [
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response && error.response.status === 401) {
+      const originalRequest = error.config || {};
       // Inspect the body. If it names an auth issue, clear the session.
       // Otherwise leave the user signed in — the caller can show a
       // route-specific error.
@@ -115,12 +156,22 @@ api.interceptors.response.use(
         !detail || TOKEN_REJECT_PATTERNS.some(re => re.test(String(detail)));
 
       if (isTokenRejection) {
+        if (!originalRequest._retry && !originalRequest.skipAuthRefresh) {
+          originalRequest._retry = true;
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return api(originalRequest);
+          }
+        }
+
         console.warn(
           'Session expired or token rejected. Clearing auth data… detail:',
           detail ?? '(none)',
         );
-        localStorage.removeItem('studySpace_token');
-        localStorage.removeItem('studySpace_user');
+        const redirectTo = window.location.pathname + window.location.search + window.location.hash;
+        clearAuthSession('expired', { redirectTo });
         // React auth guard will show login page when appState.currentUser
         // becomes null on next rerender/refresh.
       } else {

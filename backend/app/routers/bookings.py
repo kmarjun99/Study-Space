@@ -11,9 +11,15 @@ from app.schemas.booking import BookingCreate, BookingResponse
 from app.models.user import User
 from app.deps import get_current_user, dev_only
 from app.services.booking_validator import booking_validator, BookingDurationType
+from app.services.renewal_service import apply_renewal_fields
 from datetime import datetime, timedelta, date
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+
+def _booking_response_payload(booking: Booking) -> dict:
+    payload = BookingResponse.model_validate(booking).model_dump()
+    return apply_renewal_fields(payload, booking)
 
 @router.post("/hold", response_model=BookingResponse)
 async def hold_booking(
@@ -182,7 +188,7 @@ async def get_booking_by_id(
     cabin_result = await db.execute(select(Cabin).where(Cabin.id == booking.cabin_id))
     cabin = cabin_result.scalar_one_or_none()
     
-    return {
+    payload = {
         "id": booking.id,
         "user_id": booking.user_id,
         "cabin_id": booking.cabin_id,
@@ -192,8 +198,12 @@ async def get_booking_by_id(
         "amount": booking.amount,
         "status": booking.status.value if booking.status else "ACTIVE",
         "payment_status": booking.payment_status.value if booking.payment_status else "PAID",
-        "transaction_id": booking.transaction_id
+        "transaction_id": booking.transaction_id,
+        "created_at": booking.created_at,
+        "duration_type": booking.duration_type,
+        "settlement_status": booking.settlement_status.value if booking.settlement_status else "NOT_SETTLED",
     }
+    return apply_renewal_fields(payload, booking)
 
 
 @router.get("/", response_model=List[BookingResponse])
@@ -231,11 +241,11 @@ async def get_my_bookings(
                      b.owner_id = details.owner_id
                      b.cabin_number = details.cabin_number
                      
-        return bookings
+        return [_booking_response_payload(booking) for booking in bookings]
 
     else:
         result = await db.execute(select(Booking).where(Booking.user_id == current_user.id))
-        return result.scalars().all()
+        return [_booking_response_payload(booking) for booking in result.scalars().all()]
 
 @router.post("/", response_model=BookingResponse)
 async def create_booking(
@@ -598,4 +608,3 @@ async def cancel_booking(
 
     await db.commit()
     return {"message": "Booking cancelled successfully", "status": "CANCELLED"}
-

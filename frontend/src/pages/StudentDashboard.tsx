@@ -85,14 +85,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         loadFeaturedListings();
     }, []);
 
-    // Get ALL Active Bookings (not just one)
-    // Users can have multiple active bookings across different venues
+    // Get all current cabin subscriptions. Keep renewal-due/expired rows
+    // visible so students can act during the grace window instead of the card
+    // disappearing the moment endDate passes.
     const activeBookings = useMemo(() => {
-        const now = new Date();
         return (state.bookings || []).filter(b =>
             b.userId === user.id &&
-            b.status === 'ACTIVE' &&
-            new Date(b.endDate) > now
+            b.cabinId &&
+            ['ACTIVE', 'EXPIRED'].includes(b.status)
         );
     }, [state.bookings, user.id]);
 
@@ -348,15 +348,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         // Apply status filter
         if (statusFilter === 'ACTIVE') {
-            filtered = filtered.filter(b => {
-                const daysRemaining = Math.max(0, Math.ceil((new Date(b.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-                return daysRemaining > 0;
-            });
+            filtered = filtered.filter(b => (b.renewalStatus || 'ACTIVE') === 'ACTIVE');
         } else if (statusFilter === 'EXPIRED') {
-            filtered = filtered.filter(b => {
-                const daysRemaining = Math.max(0, Math.ceil((new Date(b.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-                return daysRemaining === 0;
-            });
+            filtered = filtered.filter(b => ['EXPIRED', 'RENEWAL_DUE', 'PAYMENT_PENDING'].includes(b.renewalStatus || ''));
         }
 
         // Apply search query
@@ -564,7 +558,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                         ? state.readingRooms.find(r => r.id === bookingCabin.readingRoomId)
                                         : null;
                                     const daysRemaining = Math.max(0, Math.ceil((new Date(booking.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-                                    const isExpiringSoon = daysRemaining <= 7;
+                                    const renewalStatus = booking.renewalStatus || 'ACTIVE';
+                                    const isExpiringSoon = renewalStatus === 'RENEWAL_DUE' || renewalStatus === 'PAYMENT_PENDING' || daysRemaining <= 7;
+                                    const statusLabel = renewalStatus === 'PAYMENT_PENDING'
+                                        ? 'PAYMENT PENDING'
+                                        : renewalStatus === 'RENEWAL_DUE'
+                                            ? 'RENEWAL DUE'
+                                            : renewalStatus === 'EXPIRED'
+                                                ? 'EXPIRED'
+                                                : isExpiringSoon
+                                                    ? 'EXPIRING SOON'
+                                                    : 'ACTIVE';
 
                                     return (
                                         <Card
@@ -577,7 +581,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${isExpiringSoon ? 'bg-amber-500 text-amber-100 border border-amber-400' : 'bg-indigo-500 text-indigo-100 border border-indigo-400'}`}>
-                                                            {isExpiringSoon ? 'EXPIRING SOON' : 'ACTIVE'}
+                                                            {statusLabel}
                                                         </span>
                                                     </div>
 
@@ -608,6 +612,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                                             <p className="text-xs text-white/60">Days Left</p>
                                                             <p className={`font-bold ${isExpiringSoon ? 'text-yellow-200' : ''}`}>{daysRemaining}</p>
                                                         </div>
+                                                        {booking.renewalWindowStart && (
+                                                            <div className="bg-white/10 px-3 py-2 rounded-lg backdrop-blur-sm">
+                                                                <p className="text-xs text-white/60">Renewal Window</p>
+                                                                <p className="font-semibold text-sm">
+                                                                    {formatToIST(booking.renewalWindowStart)} → {formatToIST(booking.renewalWindowEnd || booking.renewalWindowStart)}
+                                                                </p>
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     {/* Progress Bar */}

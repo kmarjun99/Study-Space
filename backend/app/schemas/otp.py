@@ -26,6 +26,13 @@ class CompleteRegistrationRequest(BaseModel):
     phone: Optional[str] = None
 
 
+class CompleteOwnerInviteRequest(BaseModel):
+    """Owner-created student activates account with invite OTP + password."""
+    email: EmailStr
+    otp_code: str
+    new_password: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

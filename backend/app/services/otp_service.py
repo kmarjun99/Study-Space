@@ -66,7 +66,8 @@ async def create_otp(
     phone: Optional[str],
     otp_type: str,
     expires_in_minutes: int = 10,
-    background_tasks: Optional[BackgroundTasks] = None
+    background_tasks: Optional[BackgroundTasks] = None,
+    send_email: bool = True,
 ) -> tuple[str, int]:
     """
     Create and send OTP to user
@@ -108,13 +109,17 @@ async def create_otp(
     user = user_result.scalars().first()
     user_name = user.name if user else "User"
     
-    # Send OTP via email only
-    if background_tasks:
-        background_tasks.add_task(send_otp_email, email, user_name, otp_code, otp_type)
-        print(f"✅ OTP created: {otp_code} for {email} (Email scheduled in background)")
+    # Send OTP via email only unless the caller wants to handle delivery
+    # synchronously and report the result itself.
+    if send_email:
+        if background_tasks:
+            background_tasks.add_task(send_otp_email, email, user_name, otp_code, otp_type)
+            print(f"✅ OTP created: {otp_code} for {email} (Email scheduled in background)")
+        else:
+            email_sent = await send_otp_email(email, user_name, otp_code, otp_type)
+            print(f"✅ OTP created: {otp_code} for {email} (Email sent: {email_sent})")
     else:
-        email_sent = await send_otp_email(email, user_name, otp_code, otp_type)
-        print(f"✅ OTP created: {otp_code} for {email} (Email sent: {email_sent})")
+        print(f"✅ OTP created: {otp_code} for {email} (Email delivery handled by caller)")
     
     return otp_code, expires_in_minutes * 60
 

@@ -48,6 +48,8 @@ class Booking(Base):
     payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING)
     transaction_id = Column(String, nullable=True)
     settlement_status = Column(Enum(SettlementStatus), default=SettlementStatus.NOT_SETTLED)
+    booking_source = Column(String(30), nullable=True)  # ONLINE / OWNER_OFFLINE / OWNER_RENEWAL
+    assigned_by_owner_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     # Booking Duration Type (NEW)
     # Stores which duration was used: "1_DAY", "1_WEEK", "1_MONTH", "3_MONTHS", "6_MONTHS"
@@ -71,4 +73,3 @@ class Booking(Base):
     paid_at = Column(DateTime, nullable=True)
     settled_at = Column(DateTime, nullable=True)
     settlement_run_id = Column(String, ForeignKey("settlement_runs.id"), nullable=True)
-

@@ -41,11 +41,16 @@ class Invoice(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     payment_id = Column(String, ForeignKey("payment_transactions.id"), nullable=True)
     owner_charge_id = Column(String, ForeignKey("owner_charges.id"), nullable=True)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    cabin_id = Column(String, ForeignKey("cabins.id"), nullable=True, index=True)
 
     # Invoice details (Float kept for backward compatibility with legacy rows)
     amount = Column(Float, nullable=False)
     tax_amount = Column(Float, default=0.0)
     total_amount = Column(Float, nullable=False)
+    payment_status = Column(String(20), nullable=True)
+    payment_reference = Column(String, nullable=True)
+    due_date = Column(DateTime, nullable=True)
 
     # Venue info (denormalized for invoice permanence)
     venue_name = Column(String, nullable=False)
@@ -54,6 +59,10 @@ class Invoice(Base):
 
     # Duration
     plan_duration = Column(String, nullable=True)  # e.g., "1 Month"
+    duration_type = Column(String(20), nullable=True)
+    joining_date = Column(DateTime, nullable=True)
+    renewal_period_start = Column(DateTime, nullable=True)
+    renewal_period_end = Column(DateTime, nullable=True)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
 

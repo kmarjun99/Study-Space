@@ -9,6 +9,12 @@ import { Logo } from '../components/Logo';
 import { BookOpen, Mail, Lock, User as UserIcon, Eye, EyeOff, CheckCircle, XCircle, Shield } from 'lucide-react';
 import { authService } from '../services/authService';
 import { validateEmail, validatePassword } from '../utils/security';
+import {
+  getPostLoginRedirect,
+  isProtectedPath,
+  persistAuthSessionFromResponse,
+  savePendingRedirect,
+} from '../utils/authSession';
 
 interface AuthProps {
   onLogin: (email: string, role: UserRole, user?: any) => void;
@@ -17,16 +23,15 @@ interface AuthProps {
 export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
   const navigate = useNavigate();
 
-  // After a successful login the URL is still /login. Without an explicit
-  // navigate the authed-branch route `/login → AuthPage` would just re-render
-  // this same form. `targetForRole` picks the dashboard the new session lands on.
-  const targetForRole = (role: UserRole, email: string): string => {
-    if (email === 'superadmin@studyspace.com' || role === UserRole.SUPER_ADMIN) return '/super-admin';
-    if (role === UserRole.ADMIN) return '/admin';
-    return '/student';
-  };
+  useEffect(() => {
+    const intendedPath = window.location.pathname + window.location.search + window.location.hash;
+    if (isProtectedPath(window.location.pathname)) {
+      savePendingRedirect(intendedPath);
+    }
+  }, []);
 
   const [isRegister, setIsRegister] = useState(false);
+  const [isOwnerInvite, setIsOwnerInvite] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -62,6 +67,21 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
   const [resetNewPassword, setResetNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteMode = params.get('invite') === '1' || params.get('mode') === 'owner_invite';
+    const invitedEmail = params.get('email');
+    if (inviteMode) {
+      setIsOwnerInvite(true);
+      setIsRegister(false);
+      setOtpType('owner_invite');
+      if (invitedEmail) {
+        setEmail(invitedEmail);
+        setEmailTouched(true);
+      }
+    }
+  }, []);
 
   // Auto-fill removed to allow manual demo credential selection
   // useEffect(() => {
@@ -114,8 +134,8 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
-    // Validate password strength for registration
-    if (isRegister) {
+    // Validate password strength for registration and owner invite setup
+    if (isRegister || isOwnerInvite) {
       const validation = validatePassword(password);
       if (!validation.isValid) {
         setPasswordErrors(validation.errors);
@@ -129,7 +149,16 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
 
     try {
       let data;
-      if (isRegister) {
+      if (isOwnerInvite) {
+        setOtp(['', '', '', '', '', '']);
+        setOtpError('');
+        setShowOtpModal(true);
+        setOtpType('owner_invite');
+        setOtpSent(true);
+        setResendTimer(0);
+        setIsLoading(false);
+        return;
+      } else if (isRegister) {
         // Register now sends OTP automatically and returns OTP response
         await authService.register(email, password, role, name);
 
@@ -145,18 +174,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
       }
 
       if (data && data.access_token) {
-        localStorage.setItem('studySpace_token', data.access_token);
-
-        // Use the user data returned efficiently from the login response
-        const user = {
-          id: data.user_id,
-          name: data.name,
-          email: data.email,
-          role: data.role,
-          avatarUrl: data.avatar_url,
-          // phone: data.phone, // If we added phone to token response
-          has_active_waitlist: data.has_active_waitlist
-        };
+        const user = persistAuthSessionFromResponse(data);
 
         let userRoleToPass = user.role as UserRole;
         if (user.email === 'superadmin@studyspace.com') {
@@ -165,7 +183,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
         onLogin(user.email, userRoleToPass, user);
         // Replace /login in history so the back button doesn't bounce them
         // back to the auth screen.
-        navigate(targetForRole(userRoleToPass, user.email), { replace: true });
+        navigate(getPostLoginRedirect(userRoleToPass, user.email), { replace: true });
       }
 
     } catch (err: any) {
@@ -237,20 +255,19 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
         await authService.verifyOtp(forgotPasswordEmail, otpCode, 'password_reset');
         setShowOtpModal(false);
         setShowResetPassword(true);
+      } else if (otpType === 'owner_invite') {
+        const data = await authService.completeOwnerInvite(email, otpCode, password);
+        if (data && data.access_token) {
+          const user = persistAuthSessionFromResponse(data);
+          setShowOtpModal(false);
+          onLogin(user.email, user.role as UserRole, user);
+          navigate(getPostLoginRedirect(user.role as UserRole, user.email), { replace: true });
+        }
       } else {
         // Complete registration: verify OTP and create user
         const data = await authService.completeRegistration(email, otpCode, password, name, role);
         if (data && data.access_token) {
-          localStorage.setItem('studySpace_token', data.access_token);
-
-          const user = {
-            id: data.user_id,
-            name: data.name,
-            email: data.email,
-            role: data.role,
-            avatarUrl: data.avatar_url,
-            has_active_waitlist: data.has_active_waitlist
-          };
+          const user = persistAuthSessionFromResponse(data);
 
           let userRoleToPass = user.role as UserRole;
           if (user.email === 'superadmin@studyspace.com') {
@@ -258,7 +275,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
           }
           setShowOtpModal(false);
           onLogin(user.email, userRoleToPass, user);
-          navigate(targetForRole(userRoleToPass, user.email), { replace: true });
+          navigate(getPostLoginRedirect(userRoleToPass, user.email), { replace: true });
         }
       }
     } catch (err: any) {
@@ -374,14 +391,14 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <h2 className="text-3xl font-bold text-gray-900 mt-4 tracking-tight animate-in slide-in-from-top-2 fade-in duration-500 delay-100">
-              {isRegister ? 'Create account' : 'Welcome back'}
+              {isOwnerInvite ? 'Verify email' : isRegister ? 'Create account' : 'Welcome back'}
             </h2>
             <p className="mt-2 text-sm text-gray-600 font-medium animate-in slide-in-from-top-2 fade-in duration-500 delay-200">
-              {isRegister ? 'Book spaces or list yours' : 'Manage your bookings or venue'}
+              {isOwnerInvite ? 'Enter your invite email and create your password' : isRegister ? 'Book spaces or list yours' : 'Manage your bookings or venue'}
             </p>
           </div>
 
-          {isRegister && (
+          {isRegister && !isOwnerInvite && (
             <div className="flex flex-col space-y-2 mb-6 animate-in slide-in-from-top-2 fade-in duration-500 delay-300">
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1 ml-1">Sign up as</label>
               <div className="flex justify-center bg-gradient-to-r from-gray-50 to-gray-100/50 p-1.5 rounded-2xl shadow-inner border border-gray-200/50">
@@ -421,7 +438,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
           )}
 
           <form className="space-y-4" onSubmit={handleSubmit}>
-            {isRegister && (
+            {isRegister && !isOwnerInvite && (
               <>
                 <div className="relative group animate-in slide-in-from-left fade-in duration-500 delay-400">
                   <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 ml-1 block">Full Name</label>
@@ -486,21 +503,23 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
 
             <div className={`relative group ${isRegister ? 'animate-in slide-in-from-left fade-in duration-500 delay-600' : 'animate-in slide-in-from-left fade-in duration-500 delay-400'}`}>
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 ml-1 block">Password</label>
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5 ml-1 block">
+                {isOwnerInvite ? 'Create Password' : 'Password'}
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
                 </div>
                 <Input
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder={isOwnerInvite ? 'Create your password' : '••••••••'}
                   className={`pl-11 pr-11 h-12 rounded-xl bg-gradient-to-br from-gray-50 to-gray-100/50 border-gray-200 focus:bg-white focus:ring-2 placeholder:text-gray-400 transition-all duration-300 hover:border-gray-300 ${passwordTouched && passwordErrors.length > 0 && isRegister
                     ? 'border-red-300 focus:border-red-400 focus:ring-red-500/30'
                     : 'focus:ring-indigo-500/30 focus:border-indigo-400'
                     }`}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  onFocus={() => isRegister && setShowPasswordStrength(true)}
+                  onFocus={() => (isRegister || isOwnerInvite) && setShowPasswordStrength(true)}
                   onBlur={() => {
                     setPasswordTouched(true);
                     setShowPasswordStrength(false);
@@ -518,7 +537,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
 
               {/* Password Strength Indicator */}
-              {isRegister && (showPasswordStrength || passwordTouched) && (
+              {(isRegister || isOwnerInvite) && (showPasswordStrength || passwordTouched) && (
                 <div className="mt-3 p-3 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 animate-in slide-in-from-top-2 fade-in duration-300">
                   <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Shield className="h-3.5 w-3.5 text-indigo-600" />
@@ -547,7 +566,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
                 </div>
               )}
             </div>
-            {isRegister && passwordTouched && passwordErrors.length > 0 && (
+            {(isRegister || isOwnerInvite) && passwordTouched && passwordErrors.length > 0 && (
               <div className="text-xs text-red-600 space-y-1 animate-in slide-in-from-top-1 fade-in duration-200">
                 {passwordErrors.map((err, idx) => (
                   <p key={idx} className="flex items-center gap-1">
@@ -558,7 +577,7 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
             )}
 
-            {!isRegister && (
+            {!isRegister && !isOwnerInvite && (
               <div className="flex justify-end pt-1 animate-in fade-in duration-500 delay-500">
                 <button
                   type="button"
@@ -579,11 +598,13 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
             >
               {isRegister
                 ? (role === UserRole.ADMIN ? '🏢 Create Owner Account' : '🎓 Create Account')
+                : isOwnerInvite
+                  ? 'Verify Email & Set Password'
                 : 'Log In'}
             </Button>
           </form>
 
-          {isRegister && (
+          {isRegister && !isOwnerInvite && (
             <div className="text-center text-xs text-gray-500 mt-6 leading-relaxed animate-in fade-in duration-500 delay-800">
               By creating an account, you agree to mySpace's <br />
               <span className="text-indigo-600 cursor-pointer hover:text-indigo-700 hover:underline font-semibold">Terms of Service</span> and <span className="text-indigo-600 cursor-pointer hover:text-indigo-700 hover:underline font-semibold">Privacy Policy</span>
@@ -595,12 +616,29 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
               {isRegister ? 'Already have an account?' : "Don't have an account?"}
             </span>
             <button
-              onClick={() => setIsRegister(!isRegister)}
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setIsOwnerInvite(false);
+              }}
               className="ml-2 font-bold text-indigo-600 hover:text-indigo-700 hover:underline transition-colors"
             >
               {isRegister ? 'Log in' : 'Sign up'}
             </button>
           </div>
+
+          {!isRegister && (
+            <div className="text-center text-sm mt-3">
+              <button
+                onClick={() => {
+                  setIsOwnerInvite(prev => !prev);
+                  setError(null);
+                }}
+                className="font-semibold text-purple-600 hover:text-purple-700 hover:underline"
+              >
+                {isOwnerInvite ? 'Back to login' : 'Complete owner invite'}
+              </button>
+            </div>
+          )}
 
 
           <div className={`text-center text-xs text-gray-400 mt-6 space-y-2 ${isRegister ? 'animate-in fade-in duration-500 delay-1000' : 'animate-in fade-in duration-500 delay-800'}`}>
@@ -619,7 +657,9 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Verify Your Identity</h3>
                 <p className="text-sm text-gray-600">
-                  We've sent a 6-digit code to<br />
+                  {otpType === 'owner_invite'
+                    ? 'Enter the 6-digit invite code sent to'
+                    : "We've sent a 6-digit code to"}<br />
                   <span className="font-semibold text-indigo-600 flex items-center justify-center gap-2 mt-1">
                     <Mail className="w-4 h-4" />
                     {otpType === 'password_reset' ? forgotPasswordEmail : email}
@@ -663,7 +703,9 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
                     📧 Check your email for the 6-digit verification code
                   </p>
                   <p className="text-xs text-blue-600 mt-1 text-center">
-                    Didn't receive it? Click "Resend OTP" below
+                    {otpType === 'owner_invite'
+                      ? 'Need a new code? Ask the reading room owner to resend the invite.'
+                      : 'Did not receive it? Click "Resend OTP" below'}
                   </p>
                 </div>
               </div>
@@ -679,7 +721,11 @@ export const AuthPage: React.FC<AuthProps> = ({ onLogin }) => {
 
               {/* Resend OTP */}
               <div className="text-center mt-4">
-                {resendTimer > 0 ? (
+                {otpType === 'owner_invite' ? (
+                  <p className="text-sm text-gray-500">
+                    Owner invite codes can only be resent by your reading room owner.
+                  </p>
+                ) : resendTimer > 0 ? (
                   <p className="text-sm text-gray-500">
                     Resend OTP in <span className="font-bold text-indigo-600">{resendTimer}s</span>
                   </p>

@@ -17,6 +17,17 @@ MAIL_FROM = settings.mail_from or settings.mail_username or os.getenv("mail_from
 sg = SendGridAPIClient(SENDGRID_API_KEY) if SENDGRID_API_KEY else None
 
 
+def is_email_delivery_configured() -> bool:
+    return bool(SENDGRID_API_KEY or (settings.mail_username and settings.mail_password))
+
+
+def _frontend_url() -> str:
+    configured = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    if configured:
+        return configured
+    return "https://myspaceapp.in" if settings.ENVIRONMENT == "production" else "http://localhost:5173"
+
+
 def _send_smtp_sync(to_email: str, subject: str, html_content: str) -> bool:
     """Send email via Gmail SMTP (synchronous, run in thread)"""
     mail_user = settings.mail_username
@@ -239,7 +250,8 @@ async def send_otp_email(
         "registration": "Your Registration Code - StudySpace",
         "password_reset": "Password Reset Code - StudySpace",
         "phone_verification": "Phone Verification Code - StudySpace",
-        "verification": "Your Verification Code - StudySpace"
+        "verification": "Your Verification Code - StudySpace",
+        "owner_invite": "You have been added to mySpace - Set up your account",
     }
     
     # Determine the purpose message based on OTP type
@@ -247,10 +259,33 @@ async def send_otp_email(
         "registration": "complete your registration",
         "password_reset": "reset your password",
         "phone_verification": "verify your phone number",
-        "verification": "verify your account"
+        "verification": "verify your account",
+        "owner_invite": "verify your email and set up your student account",
     }
     
     purpose_text = purpose_map.get(otp_type, "verify your account")
+    expiry_text = "24 hours" if otp_type == "owner_invite" else "10 minutes"
+    invite_setup_url = f"{_frontend_url()}/login?invite=1&email={recipient_email}"
+    owner_invite_intro = (
+        "A reading room owner has added you to mySpace. Use this email verification code to confirm your email and set your login password."
+        if otp_type == "owner_invite"
+        else f"We received a request to {purpose_text}. Use the verification code below to proceed:"
+    )
+    owner_invite_action = (
+        f"""
+                        <div style="text-align: center; margin: 28px 0;">
+                            <a href="{invite_setup_url}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 22px; border-radius: 10px; font-weight: 700; font-size: 15px;">
+                                Verify email & set password
+                            </a>
+                            <p style="color: #6b7280; font-size: 13px; line-height: 1.5; margin: 12px 0 0 0;">
+                                If the button does not work, open this link:<br>
+                                <a href="{invite_setup_url}" style="color: #667eea; word-break: break-all;">{invite_setup_url}</a>
+                            </p>
+                        </div>
+        """
+        if otp_type == "owner_invite"
+        else ""
+    )
     
     try:
         # Professional email template with consistent styling
@@ -274,8 +309,9 @@ async def send_otp_email(
                     <div style="padding: 40px 30px;">
                         <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">Hello {recipient_name},</h2>
                         <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
-                            We received a request to {purpose_text}. Use the verification code below to proceed:
+                            {owner_invite_intro}
                         </p>
+                        {owner_invite_action}
                         
                         <!-- OTP Box -->
                         <div style="background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); padding: 32px; border-radius: 12px; text-align: center; margin: 32px 0; border: 2px solid #e5e7eb;">
@@ -288,8 +324,8 @@ async def send_otp_email(
                         <!-- Important Info -->
                         <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px 20px; border-radius: 6px; margin: 24px 0;">
                             <p style="color: #92400e; font-size: 14px; margin: 0; line-height: 1.5;">
-                                <strong>⏱️ Expires in 10 minutes</strong><br>
-                                This code will expire in 10 minutes for security reasons.
+                                <strong>⏱️ Expires in {expiry_text}</strong><br>
+                                This code will expire in {expiry_text} for security reasons.
                             </p>
                         </div>
                         

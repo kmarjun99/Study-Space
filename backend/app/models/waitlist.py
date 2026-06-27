@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import Column, String, ForeignKey, DateTime, Enum
 from app.database import Base
 from datetime import datetime
 import uuid
@@ -26,14 +26,7 @@ class WaitlistEntry(Base):
     notified_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True) # When the reservation window ends
 
-
-class Notification(Base):
-    __tablename__ = "notifications"
-
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    title = Column(String, nullable=False)
-    message = Column(String, nullable=False)
-    read = Column(Boolean, default=False)
-    type = Column(String, nullable=False) # 'info', 'success', 'warning', 'error'
-    created_at = Column(DateTime, default=datetime.utcnow)
+# Backwards-compatible import surface. Older services imported
+# `Notification` from this module, but the canonical model lives in
+# app.models.notification.
+from app.models.notification import Notification  # noqa: E402,F401

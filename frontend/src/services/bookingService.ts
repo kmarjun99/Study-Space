@@ -1,6 +1,6 @@
 
 import api from './api';
-import { Booking } from '../types';
+import { Booking, BookingDurationType } from '../types';
 
 export interface ExtendBookingResponse {
     message: string;
@@ -11,6 +11,49 @@ export interface ExtendBookingResponse {
     payment_id: string;
     description: string;
 }
+
+const durationMonthsToType = (months: number): BookingDurationType => {
+    if (months === 3) return '3_MONTHS';
+    if (months === 6) return '6_MONTHS';
+    return '1_MONTH';
+};
+
+const mapBooking = (b: any): Booking => ({
+    id: b.id,
+    userId: b.user_id,
+    cabinId: b.cabin_id,
+    accommodationId: b.accommodation_id,
+    cabinNumber: b.cabin_number || '000',
+    startDate: b.start_date,
+    endDate: b.end_date,
+    amount: b.amount,
+    status: b.status,
+    paymentStatus: b.payment_status,
+    transactionId: b.transaction_id,
+    createdAt: b.created_at,
+    settlementStatus: b.settlement_status,
+    venueName: b.venue_name,
+    ownerName: b.owner_name,
+    ownerId: b.owner_id,
+    durationType: b.duration_type,
+    joiningDate: b.joining_date,
+    expiryDate: b.expiry_date,
+    renewalWindowStart: b.renewal_window_start,
+    renewalWindowEnd: b.renewal_window_end,
+    renewalStatus: b.renewal_status,
+    renewalDay: b.renewal_day ?? null,
+    baseAmount: b.base_amount !== undefined && b.base_amount !== null
+        ? Number(b.base_amount) : null,
+    gstAmount: b.gst_amount !== undefined && b.gst_amount !== null
+        ? Number(b.gst_amount) : null,
+    gstRateApplied: b.gst_rate_applied !== undefined && b.gst_rate_applied !== null
+        ? Number(b.gst_rate_applied) : null,
+    gstTreatment: b.gst_treatment ?? null,
+    placeOfSupplyState: b.place_of_supply_state ?? null,
+    paidAt: b.paid_at ?? null,
+    settledAt: b.settled_at ?? null,
+    settlementRunId: b.settlement_run_id ?? null,
+});
 
 export const bookingService = {
     // Get all bookings for the current user
@@ -24,40 +67,7 @@ export const bookingService = {
 
 
         const response = await api.get('/api/bookings/');
-        return response.data.map((b: any) => ({
-            id: b.id,
-            userId: b.user_id,
-            cabinId: b.cabin_id,
-            accommodationId: b.accommodation_id,
-            cabinNumber: b.cabin_number || '000',
-            startDate: b.start_date,
-            endDate: b.end_date,
-            amount: b.amount,
-            status: b.status,
-            paymentStatus: b.payment_status,
-            transactionId: b.transaction_id,
-            createdAt: b.created_at, // Map created_at
-            settlementStatus: b.settlement_status,
-            venueName: b.venue_name,
-            ownerName: b.owner_name,
-            ownerId: b.owner_id,
-            // Accounting layer (camelCase mirror of snake_case backend
-            // fields). null when the accounting shadow hadn't run at the
-            // time of payment — the super-admin UI uses null-checks to
-            // decide whether to render the GST split or a "no accounting
-            // data" placeholder.
-            baseAmount: b.base_amount !== undefined && b.base_amount !== null
-                ? Number(b.base_amount) : null,
-            gstAmount: b.gst_amount !== undefined && b.gst_amount !== null
-                ? Number(b.gst_amount) : null,
-            gstRateApplied: b.gst_rate_applied !== undefined && b.gst_rate_applied !== null
-                ? Number(b.gst_rate_applied) : null,
-            gstTreatment: b.gst_treatment ?? null,
-            placeOfSupplyState: b.place_of_supply_state ?? null,
-            paidAt: b.paid_at ?? null,
-            settledAt: b.settled_at ?? null,
-            settlementRunId: b.settlement_run_id ?? null,
-        }));
+        return response.data.map(mapBooking);
     },
 
     // Create a new booking
@@ -77,20 +87,7 @@ export const bookingService = {
         const response = await api.post('/api/bookings/', payload);
         const b = response.data;
 
-        return {
-            id: b.id,
-            userId: b.user_id,
-            cabinId: b.cabin_id,
-            accommodationId: b.accommodation_id,
-            cabinNumber: '000', // Placeholder, will be enriched by frontend state if needed
-            startDate: b.start_date,
-            endDate: b.end_date,
-            amount: b.amount,
-            status: b.status,
-            paymentStatus: b.payment_status,
-            transactionId: b.transaction_id,
-            createdAt: b.created_at
-        };
+        return mapBooking({ ...b, cabin_number: b.cabin_number || '000' });
     },
 
     /**
@@ -109,16 +106,13 @@ export const bookingService = {
         currentEndDate: string,
         paymentMethod: string = 'UPI'
     ): Promise<ExtendBookingResponse> => {
-        // Calculate new end date from provided current end date
-        const endDate = new Date(currentEndDate);
-        const newEndDate = new Date(endDate);
-        newEndDate.setMonth(newEndDate.getMonth() + durationMonths);
+        void extensionAmount;
+        void currentEndDate;
 
         const response = await api.post('/api/bookings/extend', null, {
             params: {
                 booking_id: bookingId,
-                new_end_date: newEndDate.toISOString(),
-                extension_amount: extensionAmount,
+                extension_duration_type: durationMonthsToType(durationMonths),
                 payment_method: paymentMethod,
                 transaction_id: `EXT_TXN_${Date.now()}`
             }

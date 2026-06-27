@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.database import engine, Base
 # from app.database import engine, Base # Duplicate removed
 from app.routers import auth, reading_rooms, cabins, bookings, accommodations, waitlist, ads, ad_categories, locations, admin_cities, users, reviews, inquiries, trust, payments, reset, invoices, boost, cache, subscriptions, favorites, razorpay, otp, venue_payments, messages, notifications, admin_migration, admin_system, upload, upload
+from app.routers import owner_students
 from app.routers import owner_billing, webhooks_razorpay, tax_config as tax_config_router, settlements as settlements_router, listing_billing, tax_preview, super_admin_kyc, support_tickets
 from app.models.inquiry import Inquiry  # Ensure table is created
 from app.models.trust_flag import TrustFlag  # Ensure trust tables are created
@@ -176,6 +177,7 @@ app.include_router(reading_rooms.router, prefix="/api")
 app.include_router(cabins.router, prefix="/api")
 app.include_router(bookings.router, prefix="/api")
 app.include_router(accommodations.router, prefix="/api")
+app.include_router(owner_students.router, prefix="/api")
 app.include_router(waitlist.router)
 app.include_router(ads.router)
 app.include_router(ad_categories.router)  # Dynamic Ad Categories
@@ -328,32 +330,77 @@ async def startup():
         
         print("🔄 Running booking duration configuration migration...")
         async with AsyncSessionLocal() as db:
-            # Add columns to reading_rooms
-            await db.execute(text("""
-                ALTER TABLE reading_rooms 
-                ADD COLUMN IF NOT EXISTS allowed_booking_durations TEXT DEFAULT '["1_MONTH"]'
-            """))
-            
-            await db.execute(text("""
-                ALTER TABLE reading_rooms 
-                ADD COLUMN IF NOT EXISTS duration_prices TEXT DEFAULT NULL
-            """))
-            
-            # Add duration_type to bookings
-            await db.execute(text("""
-                ALTER TABLE bookings 
-                ADD COLUMN IF NOT EXISTS duration_type VARCHAR(20) DEFAULT '1_MONTH'
-            """))
+            async def add_column_if_missing(table: str, column: str, declaration: str):
+                dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
+                if dialect == "sqlite":
+                    rows = (await db.execute(text(f"PRAGMA table_info({table})"))).all()
+                    existing = {row[1] for row in rows}
+                    if column not in existing:
+                        await db.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}"))
+                else:
+                    await db.execute(text(
+                        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {declaration}"
+                    ))
+
+            # Add columns to reading_rooms / bookings / users. SQLite does not
+            # support Postgres' `ADD COLUMN IF NOT EXISTS`, so use PRAGMA there.
+            await add_column_if_missing(
+                "reading_rooms",
+                "allowed_booking_durations",
+                """TEXT DEFAULT '["1_MONTH"]'""",
+            )
+            await add_column_if_missing("reading_rooms", "duration_prices", "TEXT DEFAULT NULL")
+            await add_column_if_missing("bookings", "duration_type", "VARCHAR(20) DEFAULT '1_MONTH'")
+            await add_column_if_missing("bookings", "booking_source", "VARCHAR(30)")
+            await add_column_if_missing("bookings", "assigned_by_owner_id", "VARCHAR")
+            await add_column_if_missing("users", "created_by_owner_id", "VARCHAR")
+            await add_column_if_missing("users", "must_set_password", "BOOLEAN DEFAULT FALSE")
+            await add_column_if_missing("users", "email_verified_at", "TIMESTAMP")
+
+            # Legacy/local databases may have the older notification table from
+            # waitlist automation. The canonical Notification model includes
+            # these columns; missing `date` was the root cause behind the owner
+            # Add Student 500 because SQLAlchemy flushed queued notifications
+            # during invite OTP creation.
+            await add_column_if_missing("notifications", "title", "VARCHAR")
+            await add_column_if_missing("notifications", "message", "TEXT")
+            await add_column_if_missing("notifications", "read", "BOOLEAN DEFAULT FALSE")
+            await add_column_if_missing("notifications", "date", "TIMESTAMP")
+            await add_column_if_missing("notifications", "type", "VARCHAR DEFAULT 'info'")
+            await add_column_if_missing("notifications", "message_id", "VARCHAR")
+
+            # Offline owner-created students need a durable invoice/fee record.
+            # These additive columns keep legacy invoice rows valid while
+            # capturing owner, cabin, payment, due-date and renewal metadata.
+            await add_column_if_missing("invoices", "owner_id", "VARCHAR")
+            await add_column_if_missing("invoices", "cabin_id", "VARCHAR")
+            await add_column_if_missing("invoices", "payment_status", "VARCHAR(20)")
+            await add_column_if_missing("invoices", "payment_reference", "VARCHAR")
+            await add_column_if_missing("invoices", "due_date", "TIMESTAMP")
+            await add_column_if_missing("invoices", "duration_type", "VARCHAR(20)")
+            await add_column_if_missing("invoices", "joining_date", "TIMESTAMP")
+            await add_column_if_missing("invoices", "renewal_period_start", "TIMESTAMP")
+            await add_column_if_missing("invoices", "renewal_period_end", "TIMESTAMP")
             
             # Set default duration configuration for existing venues using their base price
             # This query sets 1_MONTH as enabled with price_start as the default price
-            await db.execute(text("""
-                UPDATE reading_rooms 
-                SET 
-                    allowed_booking_durations = '["1_MONTH"]',
-                    duration_prices = json_build_object('1_MONTH', COALESCE(price_start, 3000))::text
-                WHERE duration_prices IS NULL OR duration_prices = 'null'
-            """))
+            dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
+            if dialect == "sqlite":
+                await db.execute(text("""
+                    UPDATE reading_rooms 
+                    SET 
+                        allowed_booking_durations = '["1_MONTH"]',
+                        duration_prices = '{"1_MONTH":' || COALESCE(price_start, 3000) || '}'
+                    WHERE duration_prices IS NULL OR duration_prices = 'null'
+                """))
+            else:
+                await db.execute(text("""
+                    UPDATE reading_rooms 
+                    SET 
+                        allowed_booking_durations = '["1_MONTH"]',
+                        duration_prices = json_build_object('1_MONTH', COALESCE(price_start, 3000))::text
+                    WHERE duration_prices IS NULL OR duration_prices = 'null'
+                """))
             
             await db.commit()
             print("✅ Booking duration migration completed!")

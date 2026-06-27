@@ -1,6 +1,7 @@
 
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+from datetime import datetime
 from app.models.user import UserRole, VerificationStatus
 
 class UserBase(BaseModel):
@@ -45,6 +46,8 @@ class Token(BaseModel):
     email: str
     avatar_url: Optional[str] = None
     has_active_waitlist: bool = False
+    access_token_expires_at: Optional[datetime] = None
+    refresh_token_expires_at: Optional[datetime] = None
 
 class TokenData(BaseModel):
     email: Optional[str] = None
