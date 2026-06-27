@@ -61,6 +61,7 @@ export const SuperAdminReadingRoomReview = () => {
     // Actions
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
     const [rejectionReason, setRejectionReason] = useState('');
+    const [accessBusy, setAccessBusy] = useState(false);
 
     useEffect(() => {
         if (id) fetchVenue(id);
@@ -107,6 +108,43 @@ export const SuperAdminReadingRoomReview = () => {
             navigate('/super-admin/supply');
         } catch (err) {
             alert('Failed to reject.');
+        }
+    };
+
+    const updateOperationalAccess = async (override: 'NONE' | 'FREE_GRANTED' | 'BLOCKED') => {
+        if (!venue) return;
+        let accessUntil: string | null = null;
+        let reason: string | null = null;
+
+        if (override === 'FREE_GRANTED') {
+            const daysText = window.prompt('Grant free operational access for how many days?', '30');
+            if (!daysText) return;
+            const days = Number(daysText);
+            if (!Number.isFinite(days) || days <= 0) {
+                alert('Enter a valid number of days.');
+                return;
+            }
+            const until = new Date();
+            until.setDate(until.getDate() + days);
+            accessUntil = until.toISOString();
+            reason = window.prompt('Reason for free access grant (optional):', '') || null;
+        } else if (override === 'BLOCKED') {
+            reason = window.prompt('Reason for blocking owner operations:', '') || null;
+            if (!reason) return;
+        }
+
+        try {
+            setAccessBusy(true);
+            const updated = await supplyService.updateReadingRoomOperationalAccess(venue.id, {
+                override,
+                accessUntil,
+                reason,
+            });
+            setVenue(updated);
+        } catch (err) {
+            alert('Failed to update operational access.');
+        } finally {
+            setAccessBusy(false);
         }
     };
 
@@ -365,6 +403,35 @@ export const SuperAdminReadingRoomReview = () => {
                             </div>
                         </div>
                     </Card>
+
+                    <Card className="p-6">
+                        <h3 className="text-sm font-bold text-gray-500 uppercase mb-4">Operational Access</h3>
+                        <div className="space-y-3 text-sm">
+                            <div className="flex justify-between gap-3">
+                                <span className="text-gray-600">Override</span>
+                                <Badge variant={venue.operationalAccessOverride === 'BLOCKED' ? 'error' : venue.operationalAccessOverride === 'FREE_GRANTED' ? 'success' : 'info'}>
+                                    {venue.operationalAccessOverride || 'NONE'}
+                                </Badge>
+                            </div>
+                            {venue.operationalAccessUntil && (
+                                <div className="flex justify-between gap-3">
+                                    <span className="text-gray-600">Free access until</span>
+                                    <span className="font-medium text-gray-900">{new Date(venue.operationalAccessUntil).toLocaleDateString('en-IN')}</span>
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 gap-2 pt-2">
+                                <Button size="sm" variant="outline" disabled={accessBusy} onClick={() => updateOperationalAccess('FREE_GRANTED')}>
+                                    Grant Free Access
+                                </Button>
+                                <Button size="sm" variant="outline" disabled={accessBusy} onClick={() => updateOperationalAccess('NONE')}>
+                                    Clear Override
+                                </Button>
+                                <Button size="sm" variant="danger" disabled={accessBusy} onClick={() => updateOperationalAccess('BLOCKED')}>
+                                    Block Owner Operations
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
                 </div>
             </div>
 
@@ -441,4 +508,3 @@ export const SuperAdminReadingRoomReview = () => {
         </div>
     );
 };
-

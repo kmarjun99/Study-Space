@@ -108,6 +108,8 @@ export interface ReadingRoom {
   subscriptionPlanId?: string;
   paymentId?: string;
   paymentDate?: string;
+  operationalAccessOverride?: 'NONE' | 'FREE_GRANTED' | 'BLOCKED';
+  operationalAccessUntil?: string | null;
   
   // Booking Duration Configuration (NEW)
   allowedBookingDurations?: BookingDurationType[];
@@ -178,6 +180,10 @@ export interface Booking {
   createdAt?: string;
   settlementStatus?: string;
   venueName?: string;
+  venueAddress?: string;
+  venueCity?: string;
+  venueLocality?: string;
+  venueContactPhone?: string;
   ownerName?: string;
   ownerId?: string;
   joiningDate?: string;

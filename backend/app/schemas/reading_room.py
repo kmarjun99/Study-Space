@@ -170,6 +170,11 @@ class ReadingRoomResponse(ReadingRoomBase):
     status: ListingStatus = ListingStatus.DRAFT
     image_url: Optional[str] = Field(default=None, serialization_alias="imageUrl") # Computed prop
     created_at: Optional[datetime] = Field(default=None, serialization_alias="createdAt")  # Submission date
+    operational_access_override: str = Field(default="NONE", serialization_alias="operationalAccessOverride")
+    operational_access_until: Optional[datetime] = Field(default=None, serialization_alias="operationalAccessUntil")
+    operational_access_reason: Optional[str] = Field(default=None, serialization_alias="operationalAccessReason")
+    operational_access_updated_by: Optional[str] = Field(default=None, serialization_alias="operationalAccessUpdatedBy")
+    operational_access_updated_at: Optional[datetime] = Field(default=None, serialization_alias="operationalAccessUpdatedAt")
     _distance: Optional[float] = None # Calculated field
     
     # Override fields to be strict Lists/Dicts with camelCase aliases for frontend
@@ -247,6 +252,8 @@ class ReadingRoomSummaryResponse(BaseModel):
     is_verified: bool = Field(default=False, serialization_alias="isVerified")
     image_url: Optional[str] = Field(default=None, serialization_alias="imageUrl")
     has_images: bool = Field(default=False, serialization_alias="hasImages")
+    operational_access_override: str = Field(default="NONE", serialization_alias="operationalAccessOverride")
+    operational_access_until: Optional[datetime] = Field(default=None, serialization_alias="operationalAccessUntil")
 
     class Config:
         from_attributes = True

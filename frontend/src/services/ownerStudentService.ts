@@ -4,6 +4,22 @@ import { BookingDurationType } from '../types';
 export type RenewalStatus = 'ACTIVE' | 'RENEWAL_DUE' | 'EXPIRED' | 'PAYMENT_PENDING';
 export type OwnerPaymentStatus = 'PAID' | 'PENDING' | 'REFUNDED';
 
+export interface OwnerOperationalAccessStatus {
+  readingRoomId: string;
+  readingRoomName?: string;
+  canOperate: boolean;
+  reasonCode?: string | null;
+  message: string;
+  missingRequirements: string[];
+  listingStatus?: string | null;
+  isVerified: boolean;
+  trustStatus: string;
+  planStatus: string;
+  paidAccessExpiresAt?: string | null;
+  freeAccessUntil?: string | null;
+  adminBlocked: boolean;
+}
+
 export interface OwnerStudentRow {
   studentId: string;
   name: string;
@@ -81,7 +97,28 @@ const mapAction = (response: any) => ({
   student: response.student ? mapRow(response.student) : undefined,
 });
 
+const mapAccess = (row: any): OwnerOperationalAccessStatus => ({
+  readingRoomId: row.reading_room_id,
+  readingRoomName: row.reading_room_name,
+  canOperate: Boolean(row.can_operate),
+  reasonCode: row.reason_code ?? null,
+  message: row.message,
+  missingRequirements: row.missing_requirements || [],
+  listingStatus: row.listing_status,
+  isVerified: Boolean(row.is_verified),
+  trustStatus: row.trust_status || 'CLEAR',
+  planStatus: row.plan_status || 'NONE',
+  paidAccessExpiresAt: row.paid_access_expires_at ?? null,
+  freeAccessUntil: row.free_access_until ?? null,
+  adminBlocked: Boolean(row.admin_blocked),
+});
+
 export const ownerStudentService = {
+  async accessStatus(): Promise<OwnerOperationalAccessStatus[]> {
+    const response = await api.get('/api/owner/operational-access');
+    return response.data.map(mapAccess);
+  },
+
   async list(params?: { renewalStatus?: RenewalStatus | 'ALL'; paymentStatus?: OwnerPaymentStatus | 'ALL' }): Promise<OwnerStudentRow[]> {
     const response = await api.get('/api/owner/students', {
       params: {

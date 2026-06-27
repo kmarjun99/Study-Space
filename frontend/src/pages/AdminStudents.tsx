@@ -3,6 +3,7 @@ import { AppState, BookingDurationType, CabinStatus } from '../types';
 import { Badge, Button, Card, Input } from '../components/UI';
 import { CheckCircle, Clock, FileText, Loader2, Mail, Phone, Plus, Receipt, Search, Send, User as UserIcon, X, XCircle } from 'lucide-react';
 import {
+  OwnerOperationalAccessStatus,
   OwnerPaymentStatus,
   OwnerStudentAssignmentInput,
   OwnerStudentRow,
@@ -50,11 +51,19 @@ const renewalBadge = (status?: RenewalStatus) => {
   return { label: 'Active', variant: 'success' as const, icon: CheckCircle };
 };
 
+const apiErrorMessage = (err: any, fallback: string) => {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (detail?.message) return detail.message;
+  return fallback;
+};
+
 export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [renewalFilter, setRenewalFilter] = useState<RenewalStatus | 'ALL'>('ALL');
   const [paymentFilter, setPaymentFilter] = useState<OwnerPaymentStatus | 'ALL'>('ALL');
   const [students, setStudents] = useState<OwnerStudentRow[]>([]);
+  const [accessStatuses, setAccessStatuses] = useState<OwnerOperationalAccessStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -85,18 +94,43 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
     [form.readingRoomId, state.cabins],
   );
 
+  const accessByRoom = useMemo(() => {
+    const map = new Map<string, OwnerOperationalAccessStatus>();
+    accessStatuses.forEach(status => map.set(status.readingRoomId, status));
+    return map;
+  }, [accessStatuses]);
+
+  const selectedRoomAccess = form.readingRoomId ? accessByRoom.get(form.readingRoomId) : undefined;
+  const isSelectedRoomLocked = selectedRoomAccess ? !selectedRoomAccess.canOperate : true;
+  const selectedRoomLockMessage = selectedRoomAccess?.message || 'Checking reading room access...';
+  const canOpenAddStudent = accessStatuses.some(status => status.canOperate);
+
+  useEffect(() => {
+    if (!accessStatuses.length) return;
+    const currentAccess = form.readingRoomId ? accessByRoom.get(form.readingRoomId) : undefined;
+    if (currentAccess?.canOperate) return;
+    const firstOpen = accessStatuses.find(status => status.canOperate);
+    if (firstOpen) {
+      setForm(prev => ({ ...prev, readingRoomId: firstOpen.readingRoomId, cabinId: '' }));
+    }
+  }, [accessStatuses, accessByRoom, form.readingRoomId]);
+
   const loadStudents = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await ownerStudentService.list({
-        renewalStatus: renewalFilter,
-        paymentStatus: paymentFilter,
-      });
+      const [data, access] = await Promise.all([
+        ownerStudentService.list({
+          renewalStatus: renewalFilter,
+          paymentStatus: paymentFilter,
+        }),
+        ownerStudentService.accessStatus(),
+      ]);
       setStudents(data);
+      setAccessStatuses(access);
     } catch (err: any) {
       console.error('Failed to fetch owner students:', err);
-      setError(err?.response?.data?.detail || 'Failed to load students');
+      setError(apiErrorMessage(err, 'Failed to load students'));
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +165,10 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
   const submitAddStudent = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSaving) return;
+    if (isSelectedRoomLocked) {
+      setAddError(selectedRoomLockMessage);
+      return;
+    }
     try {
       setIsSaving(true);
       setAddError(null);
@@ -147,8 +185,7 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
       setSuccessMessage(result.message || 'Student assigned successfully.');
     } catch (err: any) {
       console.error('Failed to add student:', err);
-      const detail = err?.response?.data?.detail;
-      setAddError(typeof detail === 'string' ? detail : 'Failed to add student. Please check the form and try again.');
+      setAddError(apiErrorMessage(err, 'Failed to add student. Please check the form and try again.'));
     } finally {
       setIsSaving(false);
     }
@@ -156,6 +193,11 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
 
   const renew = async (student: OwnerStudentRow) => {
     if (!student.bookingId) return;
+    const access = student.readingRoomId ? accessByRoom.get(student.readingRoomId) : undefined;
+    if (access && !access.canOperate) {
+      setActionError(access.message);
+      return;
+    }
     const duration = (window.prompt('Renew for duration (1_MONTH, 3_MONTHS, 6_MONTHS):', student.durationType || '1_MONTH') || '').trim() as BookingDurationType;
     if (!duration) return;
     const amountText = window.prompt('Amount collected for renewal (leave blank to use venue price):', '');
@@ -170,6 +212,11 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
 
   const markPaid = async (student: OwnerStudentRow) => {
     if (!student.bookingId) return;
+    const access = student.readingRoomId ? accessByRoom.get(student.readingRoomId) : undefined;
+    if (access && !access.canOperate) {
+      setActionError(access.message);
+      return;
+    }
     const reference = window.prompt('Payment reference (optional):', '') || undefined;
     const result = await ownerStudentService.markPaid(student.bookingId, undefined, reference);
     replaceRow(result.student);
@@ -184,6 +231,11 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
 
   const resendInvite = async (student: OwnerStudentRow) => {
     try {
+      const access = student.readingRoomId ? accessByRoom.get(student.readingRoomId) : undefined;
+      if (access && !access.canOperate) {
+        setActionError(access.message);
+        return;
+      }
       setResendingStudentId(student.studentId);
       setActionError(null);
       setActionMessage(null);
@@ -191,8 +243,7 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
       replaceRow(result.student);
       setActionMessage(result.message || `Invite resent to ${student.email}`);
     } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      setActionError(typeof detail === 'string' ? detail : `Could not resend invite to ${student.email}`);
+      setActionError(apiErrorMessage(err, `Could not resend invite to ${student.email}`));
     } finally {
       setResendingStudentId(null);
     }
@@ -228,11 +279,23 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <Button onClick={() => { setAddError(null); setSuccessMessage(null); setIsAddOpen(true); }}>
+          <Button
+            onClick={() => { setAddError(null); setSuccessMessage(null); if (canOpenAddStudent) setIsAddOpen(true); }}
+            disabled={!canOpenAddStudent}
+            title={!canOpenAddStudent ? 'No reading room is currently eligible for student admission' : undefined}
+          >
             <Plus className="w-4 h-4 mr-2" /> Add Student
           </Button>
         </div>
       </div>
+
+      {!canOpenAddStudent && !isLoading && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Student admissions are locked</p>
+          <p className="mt-1">Your reading room must be verified, live, and have an active plan or admin-granted access before adding students.</p>
+          {accessStatuses[0]?.message && <p className="mt-1 text-amber-800">{accessStatuses[0].message}</p>}
+        </div>
+      )}
 
       {successMessage && (
         <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
@@ -366,22 +429,30 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex flex-wrap justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => renew(student)}>Renew</Button>
-                          {student.paymentStatus !== 'PAID' && (
-                            <Button size="sm" variant="outline" onClick={() => markPaid(student)}>Mark Paid</Button>
-                          )}
-                          {student.mustSetPassword && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => resendInvite(student)}
-                              isLoading={resendingStudentId === student.studentId}
-                              disabled={resendingStudentId === student.studentId}
-                            >
-                              Resend Invite
-                            </Button>
-                          )}
-                          <Button size="sm" variant="danger" onClick={() => release(student)}>Release</Button>
+                          {(() => {
+                            const rowAccess = student.readingRoomId ? accessByRoom.get(student.readingRoomId) : undefined;
+                            const rowLocked = rowAccess ? !rowAccess.canOperate : false;
+                            return (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => renew(student)} disabled={rowLocked}>Renew</Button>
+                                {student.paymentStatus !== 'PAID' && (
+                                  <Button size="sm" variant="outline" onClick={() => markPaid(student)} disabled={rowLocked}>Mark Paid</Button>
+                                )}
+                                {student.mustSetPassword && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => resendInvite(student)}
+                                    isLoading={resendingStudentId === student.studentId}
+                                    disabled={rowLocked || resendingStudentId === student.studentId}
+                                  >
+                                    Resend Invite
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="danger" onClick={() => release(student)}>Release</Button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -464,8 +535,20 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         required
                       >
-                        {myRooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
+                        {myRooms.map(room => {
+                          const access = accessByRoom.get(room.id);
+                          return (
+                            <option key={room.id} value={room.id} disabled={access ? !access.canOperate : false}>
+                              {room.name}{access && !access.canOperate ? ' · Locked' : ''}
+                            </option>
+                          );
+                        })}
                       </select>
+                      {selectedRoomAccess && !selectedRoomAccess.canOperate && (
+                        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          {selectedRoomAccess.message}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">Cabin</label>
@@ -564,7 +647,7 @@ export const AdminStudents: React.FC<AdminStudentsProps> = ({ state }) => {
                   </p>
                   <div className="flex justify-end gap-3">
                     <Button type="button" variant="ghost" onClick={() => setIsAddOpen(false)} disabled={isSaving}>Cancel</Button>
-                    <Button type="submit" isLoading={isSaving} disabled={isSaving} className="min-w-[150px] whitespace-nowrap">
+                    <Button type="submit" isLoading={isSaving} disabled={isSaving || isSelectedRoomLocked} className="min-w-[150px] whitespace-nowrap">
                       {form.sendInvite === false ? 'Add Student' : 'Add & Send Invite'}
                     </Button>
                   </div>

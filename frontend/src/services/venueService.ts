@@ -29,6 +29,8 @@ export const venueService = {
             longitude: room.longitude,
             status: room.status,
             isVerified: room.isVerified ?? room.is_verified,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until,
             createdAt: room.createdAt || room.created_at
         }));
     },
@@ -50,6 +52,8 @@ export const venueService = {
             amenities: room.amenities || [],
             status: room.status,
             isVerified: room.isVerified ?? room.is_verified,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until,
             createdAt: room.createdAt || room.created_at
         }));
     },
@@ -71,6 +75,8 @@ export const venueService = {
             amenities: room.amenities || [],
             status: room.status,
             isVerified: room.isVerified ?? room.is_verified,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until,
             createdAt: room.createdAt || room.created_at
         };
     },
@@ -132,7 +138,9 @@ export const venueService = {
             contactPhone: room.contactPhone || room.contact_phone,
             amenities: room.amenities || [],
             status: room.status,
-            isVerified: room.isVerified ?? room.is_verified
+            isVerified: room.isVerified ?? room.is_verified,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until
         };
     },
 
@@ -172,7 +180,9 @@ export const venueService = {
             contactPhone: room.contactPhone || room.contact_phone,
             amenities: room.amenities || [],
             status: room.status,
-            isVerified: room.isVerified ?? room.is_verified
+            isVerified: room.isVerified ?? room.is_verified,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until
         };
     },
 
@@ -192,7 +202,9 @@ export const venueService = {
             contactPhone: room.contactPhone || room.contact_phone,
             amenities: room.amenities || [],
             status: room.status,
-            isVerified: room.isVerified ?? room.is_verified
+            isVerified: room.isVerified ?? room.is_verified,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until
         };
     },
 

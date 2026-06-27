@@ -11,6 +11,7 @@ from app.schemas.booking import BookingCreate, BookingResponse
 from app.models.user import User
 from app.deps import get_current_user, dev_only
 from app.services.booking_validator import booking_validator, BookingDurationType
+from app.services.owner_operational_access import assert_reading_room_operational_access
 from app.services.renewal_service import apply_renewal_fields
 from datetime import datetime, timedelta, date
 
@@ -20,6 +21,44 @@ router = APIRouter(prefix="/bookings", tags=["bookings"])
 def _booking_response_payload(booking: Booking) -> dict:
     payload = BookingResponse.model_validate(booking).model_dump()
     return apply_renewal_fields(payload, booking)
+
+
+async def _enrich_cabin_booking_payloads(
+    db: AsyncSession,
+    bookings: List[Booking],
+) -> None:
+    cabin_ids = {b.cabin_id for b in bookings if b.cabin_id}
+    if not cabin_ids:
+        return
+    stmt = (
+        select(
+            Cabin.id,
+            Cabin.number.label("cabin_number"),
+            ReadingRoom.name.label("venue_name"),
+            ReadingRoom.address.label("venue_address"),
+            ReadingRoom.city.label("venue_city"),
+            ReadingRoom.locality.label("venue_locality"),
+            ReadingRoom.contact_phone.label("venue_contact_phone"),
+            ReadingRoom.owner_id,
+            User.name.label("owner_name"),
+        )
+        .join(ReadingRoom, Cabin.reading_room_id == ReadingRoom.id)
+        .join(User, ReadingRoom.owner_id == User.id)
+        .where(Cabin.id.in_(cabin_ids))
+    )
+    res = await db.execute(stmt)
+    cabin_map = {row.id: row for row in res}
+    for booking in bookings:
+        if booking.cabin_id and booking.cabin_id in cabin_map:
+            details = cabin_map[booking.cabin_id]
+            booking.venue_name = details.venue_name
+            booking.venue_address = details.venue_address
+            booking.venue_city = details.venue_city
+            booking.venue_locality = details.venue_locality
+            booking.venue_contact_phone = details.venue_contact_phone
+            booking.owner_name = details.owner_name
+            booking.owner_id = details.owner_id
+            booking.cabin_number = details.cabin_number
 
 @router.post("/hold", response_model=BookingResponse)
 async def hold_booking(
@@ -63,6 +102,8 @@ async def hold_booking(
     print(f"[HOLD] Reading room: {reading_room.name}")
     print(f"[HOLD] Allowed durations (raw): {reading_room.allowed_booking_durations}")
     print(f"[HOLD] Duration prices (raw): {reading_room.duration_prices}")
+
+    await assert_reading_room_operational_access(db, reading_room)
     
     # 2. Validate duration is allowed for this venue
     try:
@@ -148,6 +189,9 @@ async def confirm_booking(
     result_cabin = await db.execute(select(Cabin).where(Cabin.id == booking.cabin_id))
     cabin = result_cabin.scalars().first()
     if cabin:
+        room = await db.scalar(select(ReadingRoom).where(ReadingRoom.id == cabin.reading_room_id))
+        if room:
+            await assert_reading_room_operational_access(db, room)
         cabin.status = CabinStatus.OCCUPIED
         cabin.current_occupant_id = current_user.id
         
@@ -217,35 +261,15 @@ async def get_my_bookings(
     if current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         result = await db.execute(select(Booking))
         bookings = result.scalars().all()
-        
-        # Enrich for Admin Console
-        cabin_ids = {b.cabin_id for b in bookings if b.cabin_id}
-        
-
-        if cabin_ids:
-             # Fetch Venue/Owner details via Cabin
-             stmt = (
-                 select(Cabin.id, Cabin.number.label("cabin_number"), ReadingRoom.name, ReadingRoom.owner_id, User.name.label("owner_name"))
-                 .join(ReadingRoom, Cabin.reading_room_id == ReadingRoom.id)
-                 .join(User, ReadingRoom.owner_id == User.id)
-                 .where(Cabin.id.in_(cabin_ids))
-             )
-             res = await db.execute(stmt)
-             cabin_map = {row.id: row for row in res}
-             
-             for b in bookings:
-                 if b.cabin_id and b.cabin_id in cabin_map:
-                     details = cabin_map[b.cabin_id]
-                     b.venue_name = details.name
-                     b.owner_name = details.owner_name
-                     b.owner_id = details.owner_id
-                     b.cabin_number = details.cabin_number
+        await _enrich_cabin_booking_payloads(db, bookings)
                      
         return [_booking_response_payload(booking) for booking in bookings]
 
     else:
         result = await db.execute(select(Booking).where(Booking.user_id == current_user.id))
-        return [_booking_response_payload(booking) for booking in result.scalars().all()]
+        bookings = result.scalars().all()
+        await _enrich_cabin_booking_payloads(db, bookings)
+        return [_booking_response_payload(booking) for booking in bookings]
 
 @router.post("/", response_model=BookingResponse)
 async def create_booking(
@@ -504,6 +528,8 @@ async def extend_booking(
         reading_room = room_result.scalars().first()
         if not reading_room:
             raise HTTPException(status_code=404, detail="Reading room not found")
+
+        await assert_reading_room_operational_access(db, reading_room)
         
         # Validate extension duration is allowed
         await booking_validator.validate_duration_allowed(reading_room, extension_duration_type)

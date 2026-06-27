@@ -15,6 +15,7 @@ from app.models.notification import Notification
 from app.models.reading_room import Cabin, ReadingRoom
 from app.models.user import User
 from app.services.email_service import _send_email
+from app.services.owner_operational_access import evaluate_reading_room_operational_access
 
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -122,6 +123,14 @@ async def process_renewal_reminders_once(db: AsyncSession, *, today: Optional[da
     emailed = 0
 
     for booking in active_bookings:
+        cabin = await db.get(Cabin, booking.cabin_id)
+        room = await db.get(ReadingRoom, cabin.reading_room_id) if cabin else None
+        if not room:
+            continue
+        access = await evaluate_reading_room_operational_access(db, room)
+        if not access.can_operate:
+            continue
+
         info = renewal_info_for_booking(booking, today=current)
 
         # Display priority shows PAYMENT_PENDING before EXPIRED, but the
@@ -144,8 +153,6 @@ async def process_renewal_reminders_once(db: AsyncSession, *, today: Optional[da
         if exists:
             continue
 
-        cabin = await db.get(Cabin, booking.cabin_id)
-        room = await db.get(ReadingRoom, cabin.reading_room_id) if cabin else None
         student = await db.get(User, booking.user_id)
         if not student:
             continue

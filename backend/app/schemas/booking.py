@@ -16,6 +16,10 @@ class BookingBase(BaseModel):
 
     settlement_status: SettlementStatus = SettlementStatus.NOT_SETTLED
     venue_name: Optional[str] = None
+    venue_address: Optional[str] = None
+    venue_city: Optional[str] = None
+    venue_locality: Optional[str] = None
+    venue_contact_phone: Optional[str] = None
     owner_name: Optional[str] = None
     owner_id: Optional[str] = None
     cabin_number: Optional[str] = None

@@ -350,6 +350,11 @@ async def startup():
                 """TEXT DEFAULT '["1_MONTH"]'""",
             )
             await add_column_if_missing("reading_rooms", "duration_prices", "TEXT DEFAULT NULL")
+            await add_column_if_missing("reading_rooms", "operational_access_override", "VARCHAR(20) DEFAULT 'NONE'")
+            await add_column_if_missing("reading_rooms", "operational_access_until", "TIMESTAMP")
+            await add_column_if_missing("reading_rooms", "operational_access_reason", "VARCHAR")
+            await add_column_if_missing("reading_rooms", "operational_access_updated_by", "VARCHAR")
+            await add_column_if_missing("reading_rooms", "operational_access_updated_at", "TIMESTAMP")
             await add_column_if_missing("bookings", "duration_type", "VARCHAR(20) DEFAULT '1_MONTH'")
             await add_column_if_missing("bookings", "booking_source", "VARCHAR(30)")
             await add_column_if_missing("bookings", "assigned_by_owner_id", "VARCHAR")

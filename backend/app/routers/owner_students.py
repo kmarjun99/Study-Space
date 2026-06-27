@@ -33,6 +33,10 @@ from app.services import otp_service
 from app.services.booking_validator import booking_validator
 from app.services.email_service import is_email_delivery_configured, send_otp_email
 from app.services.invoice_series_service import InvoiceSeriesService
+from app.services.owner_operational_access import (
+    assert_reading_room_operational_access,
+    evaluate_reading_room_operational_access,
+)
 from app.services.renewal_service import apply_renewal_fields
 
 
@@ -89,6 +93,10 @@ async def _get_owned_room_and_cabin(
     if not cabin or cabin.reading_room_id != room.id:
         raise HTTPException(status_code=404, detail="Cabin not found in this reading room")
     return room, cabin
+
+
+async def _assert_operational_room(db: AsyncSession, room: ReadingRoom) -> None:
+    await assert_reading_room_operational_access(db, room)
 
 
 async def _load_owned_booking(
@@ -236,6 +244,26 @@ async def list_owner_students(
     return rows
 
 
+@router.get("/operational-access")
+async def list_owner_operational_access(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_owner(current_user)
+    result = await db.execute(
+        select(ReadingRoom)
+        .where(ReadingRoom.owner_id == current_user.id)
+        .order_by(ReadingRoom.name)
+    )
+    statuses = []
+    for room in result.scalars().all():
+        access = await evaluate_reading_room_operational_access(db, room)
+        payload = access.to_dict()
+        payload["reading_room_name"] = room.name
+        statuses.append(payload)
+    return statuses
+
+
 @router.post("/students", response_model=OwnerStudentActionResponse)
 async def create_owner_student_assignment(
     request: OwnerStudentAssignmentCreate,
@@ -250,6 +278,7 @@ async def create_owner_student_assignment(
         reading_room_id=request.reading_room_id,
         cabin_id=request.cabin_id,
     )
+    await _assert_operational_room(db, room)
 
     await booking_validator.validate_duration_allowed(room, request.duration_type)
     booking_validator.validate_custom_prices_set(room, request.duration_type)
@@ -257,6 +286,21 @@ async def create_owner_student_assignment(
     existing_user = await db.scalar(select(User).where(User.email == request.email))
     if existing_user and existing_user.role != UserRole.STUDENT:
         raise HTTPException(status_code=409, detail="This email belongs to a non-student account")
+
+    if cabin.status not in (CabinStatus.AVAILABLE, CabinStatus.RESERVED) and (
+        not existing_user or cabin.current_occupant_id != existing_user.id
+    ):
+        raise HTTPException(status_code=409, detail="Cabin is already assigned to another student")
+
+    active_query = select(Booking.id).where(
+        Booking.cabin_id == cabin.id,
+        Booking.status.in_([BookingStatus.ACTIVE, BookingStatus.HELD]),
+    )
+    if existing_user:
+        active_query = active_query.where(Booking.user_id != existing_user.id)
+    active_other = await db.scalar(active_query)
+    if active_other:
+        raise HTTPException(status_code=409, detail="Cabin already has an active assignment")
 
     student = existing_user
     if student is None:
@@ -278,20 +322,6 @@ async def create_owner_student_assignment(
         if not student.email_verified_at:
             student.verification_status = VerificationStatus.PENDING
             student.must_set_password = True
-
-    if cabin.status not in (CabinStatus.AVAILABLE, CabinStatus.RESERVED) and cabin.current_occupant_id != student.id:
-        raise HTTPException(status_code=409, detail="Cabin is already assigned to another student")
-
-    active_other = await db.scalar(
-        select(Booking.id)
-        .where(
-            Booking.cabin_id == cabin.id,
-            Booking.status.in_([BookingStatus.ACTIVE, BookingStatus.HELD]),
-            Booking.user_id != student.id,
-        )
-    )
-    if active_other:
-        raise HTTPException(status_code=409, detail="Cabin already has an active assignment")
 
     joining_dt = datetime.combine(request.joining_date, time.min)
     expiry_dt = booking_validator.calculate_end_date(joining_dt, request.duration_type)
@@ -399,6 +429,7 @@ async def renew_student_booking(
 ):
     _require_owner(current_user)
     booking, cabin, room, student = await _load_owned_booking(db, owner_id=current_user.id, booking_id=booking_id)
+    await _assert_operational_room(db, room)
     duration_type = request.duration_type or booking.duration_type or "1_MONTH"
     await booking_validator.validate_duration_allowed(room, duration_type)
     booking_validator.validate_custom_prices_set(room, duration_type)
@@ -466,6 +497,7 @@ async def mark_student_booking_paid(
 ):
     _require_owner(current_user)
     booking, cabin, room, student = await _load_owned_booking(db, owner_id=current_user.id, booking_id=booking_id)
+    await _assert_operational_room(db, room)
     amount = request.amount if request.amount is not None else booking.amount
     booking.payment_status = PaymentStatus.PAID
     booking.paid_at = booking.paid_at or datetime.utcnow()
@@ -564,6 +596,7 @@ async def resend_owner_student_invite(
     if not row:
         raise HTTPException(status_code=404, detail="Student not found")
     student, booking, cabin, room = row
+    await _assert_operational_room(db, room)
     otp_code, _ = await otp_service.create_otp(
         db=db,
         email=student.email,

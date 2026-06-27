@@ -14,6 +14,8 @@ export const supplyService = {
             ownerId: room.owner_id,
             priceStart: room.price_start,
             contactPhone: room.contact_phone,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until,
             amenities: Array.isArray(room.amenities)
                 ? room.amenities
                 : (typeof room.amenities === 'string' ? room.amenities.split(',') : []),
@@ -100,6 +102,8 @@ export const supplyService = {
             ownerId: room.owner_id,
             priceStart: room.price_start,
             contactPhone: room.contact_phone,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until,
             amenities: Array.isArray(room.amenities)
                 ? room.amenities
                 : (typeof room.amenities === 'string' ? room.amenities.split(',') : []),
@@ -195,5 +199,29 @@ export const supplyService = {
         const endpoint = type === 'room' ? `/api/reading-rooms/${id}/reject` : `/api/accommodations/${id}/reject`;
         const response = await api.put(endpoint, { reason });
         return response.data;
+    },
+
+    updateReadingRoomOperationalAccess: async (
+        id: string,
+        input: { override: 'NONE' | 'FREE_GRANTED' | 'BLOCKED'; accessUntil?: string | null; reason?: string | null }
+    ): Promise<ReadingRoom> => {
+        const response = await api.patch(`/api/reading-rooms/${id}/operational-access`, {
+            override: input.override,
+            access_until: input.accessUntil || null,
+            reason: input.reason || null,
+        });
+        const room = response.data;
+        return {
+            ...room,
+            imageUrl: room.image_url,
+            ownerId: room.owner_id,
+            priceStart: room.price_start,
+            contactPhone: room.contact_phone,
+            operationalAccessOverride: room.operationalAccessOverride || room.operational_access_override,
+            operationalAccessUntil: room.operationalAccessUntil || room.operational_access_until,
+            amenities: Array.isArray(room.amenities)
+                ? room.amenities
+                : (typeof room.amenities === 'string' ? room.amenities.split(',') : []),
+        };
     }
 };

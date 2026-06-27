@@ -45,6 +45,12 @@ class PriceDisplayMode(str, enum.Enum):
     GST_EXTRA = "GST_EXTRA"
 
 
+class OperationalAccessOverride(str, enum.Enum):
+    NONE = "NONE"
+    FREE_GRANTED = "FREE_GRANTED"
+    BLOCKED = "BLOCKED"
+
+
 # TrustStatus is stored as String column with values: CLEAR, FLAGGED, UNDER_REVIEW, SUSPENDED
 
 class ReadingRoom(Base):
@@ -88,6 +94,15 @@ class ReadingRoom(Base):
     subscription_plan_id = Column(String, ForeignKey("subscription_plans.id"), nullable=True)
     payment_id = Column(String, nullable=True)  # Razorpay payment ID
     payment_date = Column(DateTime, nullable=True)
+
+    # Owner operational access gate. Super/admins can grant temporary free
+    # access for verified venues or block all operational writes even when
+    # the listing/payment state would otherwise allow them.
+    operational_access_override = Column(String(20), nullable=False, default=OperationalAccessOverride.NONE.value)
+    operational_access_until = Column(DateTime, nullable=True)
+    operational_access_reason = Column(String, nullable=True)
+    operational_access_updated_by = Column(String, ForeignKey("users.id"), nullable=True)
+    operational_access_updated_at = Column(DateTime, nullable=True)
     
     # Submission timestamp
     created_at = Column(DateTime, default=datetime.utcnow)

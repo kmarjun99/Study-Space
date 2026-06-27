@@ -2,12 +2,13 @@ from typing import List, Annotated
 import base64
 import binascii
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
-from app.models.reading_room import ReadingRoom, Cabin, CabinStatus, ListingStatus
+from app.models.reading_room import ReadingRoom, Cabin, CabinStatus, ListingStatus, OperationalAccessOverride
 from app.models.city import CitySettings
 from app.models.booking import Booking
 from app.schemas.reading_room import (
@@ -20,7 +21,7 @@ from app.schemas.reading_room import (
     DurationConfigUpdate,
 )
 from app.models.user import User, UserRole
-from app.deps import get_current_user, get_current_admin, get_current_user_optional
+from app.deps import get_current_user, get_current_admin, get_current_super_admin, get_current_user_optional
 from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/reading-rooms", tags=["reading-rooms"])
@@ -166,6 +167,8 @@ async def get_my_venue_summaries(
             is_verified=venue.is_verified,
             image_url=_listing_preview(venue.images),
             has_images=bool(_first_listing_image(venue.images)),
+            operational_access_override=getattr(venue, "operational_access_override", "NONE") or "NONE",
+            operational_access_until=getattr(venue, "operational_access_until", None),
         )
         for venue in result.scalars().all()
     ]
@@ -668,6 +671,13 @@ async def verify_reading_room(
 class RejectRequest(BaseModel):
     reason: str
 
+
+class OperationalAccessUpdate(BaseModel):
+    override: OperationalAccessOverride = OperationalAccessOverride.NONE
+    access_until: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
 @router.put("/{room_id}/reject", response_model=ReadingRoomResponse, response_model_by_alias=True)
 async def reject_reading_room(
     room_id: str,
@@ -683,6 +693,31 @@ async def reject_reading_room(
     room.status = ListingStatus.REJECTED
     room.is_verified = False
     
+    await db.commit()
+    await db.refresh(room)
+    return room
+
+
+@router.patch("/{room_id}/operational-access", response_model=ReadingRoomResponse, response_model_by_alias=True)
+async def update_reading_room_operational_access(
+    room_id: str,
+    request: OperationalAccessUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_super_admin),
+):
+    room = await db.get(ReadingRoom, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Reading room not found")
+
+    if request.override == OperationalAccessOverride.FREE_GRANTED and not request.access_until:
+        raise HTTPException(status_code=400, detail="Free access requires an access_until date")
+
+    room.operational_access_override = request.override.value
+    room.operational_access_until = request.access_until if request.override == OperationalAccessOverride.FREE_GRANTED else None
+    room.operational_access_reason = request.reason
+    room.operational_access_updated_by = current_user.id
+    room.operational_access_updated_at = datetime.utcnow()
+
     await db.commit()
     await db.refresh(room)
     return room

@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from fastapi import BackgroundTasks, Response
+from fastapi import BackgroundTasks, HTTPException, Response
 from sqlalchemy import select
 
 from app.core.security import get_password_hash
@@ -13,9 +13,11 @@ from app.models.booking_renewal import BookingRenewalReminder
 from app.models.invoice import Invoice, InvoiceDocType
 from app.models.notification import Notification
 from app.models.payment_transaction import PaymentTransaction
-from app.models.reading_room import Cabin, CabinStatus, ReadingRoom
+from app.models.reading_room import Cabin, CabinStatus, ListingStatus, OperationalAccessOverride, ReadingRoom
+from app.models.subscription_plan import SubscriptionPlan
 from app.models.user import User, UserRole, VerificationStatus
 from app.routers.auth import complete_owner_invite, login
+from app.routers.bookings import get_my_bookings
 from app.routers.otp import resend_otp, send_otp
 from app.routers.owner_students import create_owner_student_assignment, mark_student_booking_paid, renew_student_booking
 from app.schemas.otp import CompleteOwnerInviteRequest, OTPRequest
@@ -38,8 +40,13 @@ async def _seed_owner_room_cabin(db, *, cabin_status=CabinStatus.AVAILABLE):
         owner_id=owner.id,
         name="Renewal Room",
         address="Main Road",
+        contact_phone="9999999999",
         state="Kerala",
         price_start=1500,
+        status=ListingStatus.LIVE,
+        is_verified=True,
+        operational_access_override=OperationalAccessOverride.FREE_GRANTED.value,
+        operational_access_until=datetime(2030, 1, 1),
         allowed_booking_durations='["1_MONTH","3_MONTHS","6_MONTHS"]',
         duration_prices='{"1_MONTH":1500,"3_MONTHS":4200,"6_MONTHS":8000}',
     )
@@ -135,6 +142,176 @@ async def test_owner_can_create_offline_student_assignment_and_payment(seeded_db
     assert invoice.payment_reference == "cash-001"
     assert invoice.joining_date == booking.start_date
     assert invoice.renewal_period_end == booking.end_date
+
+
+@pytest.mark.asyncio
+async def test_draft_room_cannot_create_offline_student_and_has_no_side_effects(seeded_db):
+    owner, room, cabin = await _seed_owner_room_cabin(seeded_db)
+    room.status = ListingStatus.DRAFT
+    room.is_verified = False
+    room.operational_access_override = OperationalAccessOverride.NONE.value
+    room.operational_access_until = None
+    await seeded_db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        await create_owner_student_assignment(
+            OwnerStudentAssignmentCreate(
+                name="Blocked Student",
+                email="blocked.student@example.com",
+                phone="9999999998",
+                reading_room_id=room.id,
+                cabin_id=cabin.id,
+                duration_type="1_MONTH",
+                joining_date=date(2026, 6, 1),
+                payment_status=PaymentStatus.PAID,
+                payment_reference="cash-blocked",
+            ),
+            background_tasks=BackgroundTasks(),
+            db=seeded_db,
+            current_user=owner,
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail["code"] == "VENUE_NOT_LIVE"
+    assert await seeded_db.scalar(select(User).where(User.email == "blocked.student@example.com")) is None
+    assert await seeded_db.scalar(select(Booking).where(Booking.transaction_id == "cash-blocked")) is None
+    assert await seeded_db.scalar(select(Invoice).where(Invoice.payment_reference == "cash-blocked")) is None
+    await seeded_db.refresh(cabin)
+    assert cabin.status == CabinStatus.AVAILABLE
+    assert cabin.current_occupant_id is None
+
+
+@pytest.mark.asyncio
+async def test_live_verified_room_with_active_paid_plan_can_create_offline_student(seeded_db):
+    owner, room, cabin = await _seed_owner_room_cabin(seeded_db)
+    plan = SubscriptionPlan(
+        name="Monthly",
+        description="Test plan",
+        price=999,
+        duration_days=30,
+        is_active=True,
+        created_by="super-admin",
+    )
+    seeded_db.add(plan)
+    await seeded_db.flush()
+    room.operational_access_override = OperationalAccessOverride.NONE.value
+    room.operational_access_until = None
+    room.subscription_plan_id = plan.id
+    room.payment_date = datetime.utcnow()
+    await seeded_db.commit()
+
+    response = await create_owner_student_assignment(
+        OwnerStudentAssignmentCreate(
+            name="Paid Plan Student",
+            email="paid.plan.student@example.com",
+            phone="9999999997",
+            reading_room_id=room.id,
+            cabin_id=cabin.id,
+            duration_type="1_MONTH",
+            joining_date=date(2026, 6, 1),
+            payment_status=PaymentStatus.PENDING,
+            send_invite=False,
+        ),
+        background_tasks=BackgroundTasks(),
+        db=seeded_db,
+        current_user=owner,
+    )
+
+    assert response.success is True
+    assert response.student.email == "paid.plan.student@example.com"
+    assert response.student.payment_status == PaymentStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_admin_blocked_room_cannot_resend_or_renew_but_release_is_allowed(seeded_db):
+    from app.routers.owner_students import release_student_cabin, resend_owner_student_invite
+
+    owner, room, cabin = await _seed_owner_room_cabin(seeded_db)
+    student = User(
+        email="assigned.student@example.com",
+        hashed_password=get_password_hash("Secret123!"),
+        name="Assigned Student",
+        role=UserRole.STUDENT,
+        verification_status=VerificationStatus.PENDING,
+        must_set_password=True,
+    )
+    seeded_db.add(student)
+    await seeded_db.flush()
+    booking = Booking(
+        user_id=student.id,
+        cabin_id=cabin.id,
+        start_date=datetime(2026, 6, 1),
+        end_date=datetime(2026, 7, 1),
+        amount=1500,
+        status=BookingStatus.ACTIVE,
+        payment_status=PaymentStatus.PENDING,
+        duration_type="1_MONTH",
+    )
+    cabin.status = CabinStatus.OCCUPIED
+    cabin.current_occupant_id = student.id
+    seeded_db.add(booking)
+    await seeded_db.commit()
+
+    room.operational_access_override = OperationalAccessOverride.BLOCKED.value
+    await seeded_db.commit()
+
+    with pytest.raises(HTTPException) as renew_exc:
+        await renew_student_booking(
+            booking.id,
+            OwnerBookingRenewRequest(duration_type="1_MONTH", payment_status=PaymentStatus.PENDING),
+            db=seeded_db,
+            current_user=owner,
+        )
+    assert renew_exc.value.status_code == 403
+    assert renew_exc.value.detail["code"] == "ADMIN_BLOCKED"
+
+    with pytest.raises(HTTPException) as invite_exc:
+        await resend_owner_student_invite(
+            student.id,
+            background_tasks=BackgroundTasks(),
+            db=seeded_db,
+            current_user=owner,
+        )
+    assert invite_exc.value.status_code == 403
+
+    released = await release_student_cabin(booking.id, db=seeded_db, current_user=owner)
+    assert released.success is True
+    await seeded_db.refresh(cabin)
+    assert cabin.status == CabinStatus.AVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_student_booking_list_is_enriched_with_venue_details(seeded_db):
+    owner, room, cabin = await _seed_owner_room_cabin(seeded_db)
+    student = User(
+        email="booking.student@example.com",
+        hashed_password=get_password_hash("Secret123!"),
+        name="Booking Student",
+        role=UserRole.STUDENT,
+        verification_status=VerificationStatus.VERIFIED,
+    )
+    seeded_db.add(student)
+    await seeded_db.flush()
+    booking = Booking(
+        user_id=student.id,
+        cabin_id=cabin.id,
+        start_date=datetime(2026, 6, 1),
+        end_date=datetime(2026, 7, 1),
+        amount=1500,
+        status=BookingStatus.ACTIVE,
+        payment_status=PaymentStatus.PAID,
+        duration_type="1_MONTH",
+    )
+    seeded_db.add(booking)
+    await seeded_db.commit()
+
+    rows = await get_my_bookings(db=seeded_db, current_user=student)
+    payload = rows[0]
+    assert payload["venue_name"] == room.name
+    assert payload["venue_address"] == room.address
+    assert payload["venue_contact_phone"] == room.contact_phone
+    assert payload["owner_id"] == owner.id
+    assert payload["cabin_number"] == cabin.number
 
 
 @pytest.mark.asyncio
